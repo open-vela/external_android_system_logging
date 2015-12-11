@@ -208,7 +208,6 @@ static const char *LOG_NAME[LOG_ID_MAX] = {
     [LOG_ID_EVENTS] = "events",
     [LOG_ID_SYSTEM] = "system",
     [LOG_ID_CRASH] = "crash",
-    [LOG_ID_SECURITY] = "security",
     [LOG_ID_KERNEL] = "kernel",
 };
 
