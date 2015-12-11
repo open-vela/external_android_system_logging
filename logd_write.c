@@ -84,7 +84,7 @@ static void unlock()
 #endif  /* !defined(_WIN32) */
 
 #if FAKE_LOG_DEVICE
-static int log_fds[(int)LOG_ID_MAX] = { -1, -1, -1, -1, -1, -1 };
+static int log_fds[(int)LOG_ID_MAX] = { -1, -1, -1, -1, -1 };
 #else
 static int logd_fd = -1;
 static int pstore_fd = -1;
@@ -181,7 +181,6 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec *vec, size_t nr)
     static uid_t last_uid = AID_ROOT; /* logd *always* starts up as AID_ROOT */
     static pid_t last_pid = (pid_t) -1;
     static atomic_int_fast32_t dropped;
-    static atomic_int_fast32_t dropped_security;
 
     if (!nr) {
         return -EINVAL;
@@ -192,23 +191,6 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec *vec, size_t nr)
     }
     if (last_pid == (pid_t) -1) {
         last_pid = getpid();
-    }
-    if (log_id == LOG_ID_SECURITY) {
-        if ((last_uid != AID_SYSTEM) && (last_uid != AID_ROOT)) {
-            uid_t uid = geteuid();
-            if ((uid != AID_SYSTEM) && (uid != AID_ROOT)) {
-                gid_t gid = getgid();
-                if ((gid != AID_SYSTEM) && (gid != AID_ROOT)) {
-                    gid = getegid();
-                    if ((gid != AID_SYSTEM) && (gid != AID_ROOT)) {
-                        return -EPERM;
-                    }
-                }
-            }
-        }
-        if (!__android_log_security()) {
-            return -EPERM;
-        }
     }
     /*
      *  struct {
@@ -247,26 +229,7 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec *vec, size_t nr)
     newVec[1].iov_len    = sizeof(header);
 
     if (logd_fd > 0) {
-        int32_t snapshot = atomic_exchange_explicit(&dropped_security, 0,
-                                                    memory_order_relaxed);
-        if (snapshot) {
-            android_log_event_int_t buffer;
-
-            header.id = LOG_ID_SECURITY;
-            buffer.header.tag = htole32(LIBLOG_LOG_TAG);
-            buffer.payload.type = EVENT_TYPE_INT;
-            buffer.payload.data = htole32(snapshot);
-
-            newVec[2].iov_base = &buffer;
-            newVec[2].iov_len  = sizeof(buffer);
-
-            ret = TEMP_FAILURE_RETRY(writev(logd_fd, newVec + 1, 2));
-            if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
-                atomic_fetch_add_explicit(&dropped_security, snapshot,
-                                          memory_order_relaxed);
-            }
-        }
-        snapshot = atomic_exchange_explicit(&dropped, 0, memory_order_relaxed);
+        int32_t snapshot = atomic_exchange_explicit(&dropped, 0, memory_order_relaxed);
         if (snapshot) {
             android_log_event_int_t buffer;
 
@@ -280,8 +243,7 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec *vec, size_t nr)
 
             ret = TEMP_FAILURE_RETRY(writev(logd_fd, newVec + 1, 2));
             if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
-                atomic_fetch_add_explicit(&dropped, snapshot,
-                                          memory_order_relaxed);
+                atomic_fetch_add_explicit(&dropped, snapshot, memory_order_relaxed);
             }
         }
     }
@@ -353,10 +315,6 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec *vec, size_t nr)
         ret -= sizeof(header);
     } else if (ret == -EAGAIN) {
         atomic_fetch_add_explicit(&dropped, 1, memory_order_relaxed);
-        if (log_id == LOG_ID_SECURITY) {
-            atomic_fetch_add_explicit(&dropped_security, 1,
-                                      memory_order_relaxed);
-        }
     }
 #endif
 
@@ -370,7 +328,6 @@ static const char *LOG_NAME[LOG_ID_MAX] = {
     [LOG_ID_EVENTS] = "events",
     [LOG_ID_SYSTEM] = "system",
     [LOG_ID_CRASH] = "crash",
-    [LOG_ID_SECURITY] = "security",
     [LOG_ID_KERNEL] = "kernel",
 };
 
@@ -524,18 +481,6 @@ int __android_log_bwrite(int32_t tag, const void *payload, size_t len)
     vec[1].iov_len = len;
 
     return write_to_log(LOG_ID_EVENTS, vec, 2);
-}
-
-int __android_log_security_bwrite(int32_t tag, const void *payload, size_t len)
-{
-    struct iovec vec[2];
-
-    vec[0].iov_base = &tag;
-    vec[0].iov_len = sizeof(tag);
-    vec[1].iov_base = (void*)payload;
-    vec[1].iov_len = len;
-
-    return write_to_log(LOG_ID_SECURITY, vec, 2);
 }
 
 /*
