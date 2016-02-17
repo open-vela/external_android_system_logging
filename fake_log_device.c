@@ -69,7 +69,7 @@ typedef struct LogState {
     int     fakeFd;
 
     /* a printable name for this fake device */
-    char   debugName[sizeof("/dev/log/security")];
+    char   *debugName;
 
     /* nonzero if this is a binary log */
     int     isBinary;
@@ -123,8 +123,8 @@ static void unlock()
  * File descriptor management.
  */
 #define FAKE_FD_BASE 10000
-#define MAX_OPEN_LOGS 8
-static LogState openLogTable[MAX_OPEN_LOGS];
+#define MAX_OPEN_LOGS 16
+static LogState *openLogTable[MAX_OPEN_LOGS];
 
 /*
  * Allocate an fd and associate a new LogState with it.
@@ -134,10 +134,11 @@ static LogState *createLogState()
 {
     size_t i;
 
-    for (i = 0; i < (sizeof(openLogTable) / sizeof(openLogTable[0])); i++) {
-        if (openLogTable[i].fakeFd == 0) {
-            openLogTable[i].fakeFd = FAKE_FD_BASE + i;
-            return &openLogTable[i];
+    for (i = 0; i < sizeof(openLogTable); i++) {
+        if (openLogTable[i] == NULL) {
+            openLogTable[i] = calloc(1, sizeof(LogState));
+            openLogTable[i]->fakeFd = FAKE_FD_BASE + i;
+            return openLogTable[i];
         }
     }
     return NULL;
@@ -149,7 +150,7 @@ static LogState *createLogState()
 static LogState *fdToLogState(int fd)
 {
     if (fd >= FAKE_FD_BASE && fd < FAKE_FD_BASE + MAX_OPEN_LOGS) {
-        return &openLogTable[fd - FAKE_FD_BASE];
+        return openLogTable[fd - FAKE_FD_BASE];
     }
     return NULL;
 }
@@ -165,7 +166,9 @@ static void deleteFakeFd(int fd)
 
     ls = fdToLogState(fd);
     if (ls != NULL) {
-        memset(&openLogTable[fd - FAKE_FD_BASE], 0, sizeof(openLogTable[0]));
+        openLogTable[fd - FAKE_FD_BASE] = NULL;
+        free(ls->debugName);
+        free(ls);
     }
 
     unlock();
@@ -188,12 +191,10 @@ static void configureInitialState(const char* pathName, LogState* logState)
 {
     static const int kDevLogLen = sizeof("/dev/log/") - 1;
 
-    strncpy(logState->debugName, pathName, sizeof(logState->debugName));
-    logState->debugName[sizeof(logState->debugName) - 1] = '\0';
+    logState->debugName = strdup(pathName);
 
     /* identify binary logs */
-    if (!strcmp(pathName + kDevLogLen, "events") ||
-            !strcmp(pathName + kDevLogLen, "security")) {
+    if (strcmp(pathName + kDevLogLen, "events") == 0) {
         logState->isBinary = 1;
     }
 
@@ -217,7 +218,8 @@ static void configureInitialState(const char* pathName, LogState* logState)
 
             i = 0;
             while (*tags != '\0' && !isspace(*tags) && *tags != ':' &&
-                    i < kMaxTagLen) {
+                i < kMaxTagLen)
+            {
                 tagName[i++] = *tags++;
             }
             if (i == kMaxTagLen) {
@@ -318,9 +320,9 @@ static const char* getPriorityString(int priority)
     };
     int idx;
 
-    idx = (int)priority - (int)ANDROID_LOG_VERBOSE;
+    idx = (int) priority - (int) ANDROID_LOG_VERBOSE;
     if (idx < 0 ||
-            idx >= (int)(sizeof(priorityStrings) / sizeof(priorityStrings[0])))
+        idx >= (int) (sizeof(priorityStrings) / sizeof(priorityStrings[0])))
         return "?unknown?";
     return priorityStrings[idx];
 }
@@ -452,15 +454,13 @@ static void showLog(LogState *state,
     while (p < end) {
         if (*p++ == '\n') numLines++;
     }
-    if (p > msg && *(p-1) != '\n') {
-        numLines++;
-    }
+    if (p > msg && *(p-1) != '\n') numLines++;
 
     /*
      * Create an array of iovecs large enough to write all of
      * the lines with a prefix and a suffix.
      */
-    const size_t INLINE_VECS = 64;
+    const size_t INLINE_VECS = 6;
     const size_t MAX_LINES   = ((size_t)~0)/(3*sizeof(struct iovec*));
     struct iovec stackVec[INLINE_VECS];
     struct iovec* vec = stackVec;
@@ -494,9 +494,7 @@ static void showLog(LogState *state,
             v++;
         }
         const char* start = p;
-        while (p < end && *p != '\n') {
-            p++;
-        }
+        while (p < end && *p != '\n') p++;
         if ((p-start) > 0) {
             v->iov_base = (void*)start;
             v->iov_len = p-start;
