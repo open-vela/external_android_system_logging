@@ -99,6 +99,10 @@ static pthread_mutex_t fakeLogDeviceLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void lock()
 {
+    /*
+     * If we trigger a signal handler in the middle of locked activity and the
+     * signal handler logs a message, we could get into a deadlock state.
+     */
     pthread_mutex_lock(&fakeLogDeviceLock);
 }
 
@@ -106,9 +110,12 @@ static void unlock()
 {
     pthread_mutex_unlock(&fakeLogDeviceLock);
 }
+
 #else   // !defined(_WIN32)
+
 #define lock() ((void)0)
 #define unlock() ((void)0)
+
 #endif  // !defined(_WIN32)
 
 
@@ -458,13 +465,13 @@ static void showLog(LogState *state,
     if (numLines > MAX_LINES)
         numLines = MAX_LINES;
 
-    numVecs = numLines*3;  // 3 iovecs per line.
+    numVecs = numLines * 3;  // 3 iovecs per line.
     if (numVecs > INLINE_VECS) {
         vec = (struct iovec*)malloc(sizeof(struct iovec)*numVecs);
         if (vec == NULL) {
             msg = "LOG: write failed, no memory";
-            numVecs = 3;
-            numLines = 1;
+            numVecs = INLINE_VECS;
+            numLines = numVecs / 3;
             vec = stackVec;
         }
     }
