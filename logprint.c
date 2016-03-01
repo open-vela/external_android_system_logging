@@ -512,18 +512,8 @@ LIBLOG_ABI_PUBLIC int android_log_processLogBuffer(
     }
 
     if (msgStart == -1) {
-        /* +++ LOG: malformed log message, DYB */
-        for (i = 1; i < buf->len; i++) {
-            /* odd characters in tag? */
-            if ((msg[i] <= ' ') || (msg[i] == ':') || (msg[i] >= 0x7f)) {
-                msg[i] = '\0';
-                msgStart = i + 1;
-                break;
-            }
-        }
-        if (msgStart == -1) {
-            msgStart = buf->len - 1; /* All tag, no message, print truncates */
-        }
+        fprintf(stderr, "+++ LOG: malformed log message\n");
+        return -1;
     }
     if (msgEnd == -1) {
         /* incoming message not null-terminated; force it */
