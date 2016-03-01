@@ -174,7 +174,7 @@ static inline int32_t get4LE(const char* src)
     return src[0] | (src[1] << 8) | (src[2] << 16) | (src[3] << 24);
 }
 
-static void bswrite_test(const char *message) {
+TEST(liblog, __android_log_bswrite) {
     struct logger_list *logger_list;
 
     pid_t pid = getpid();
@@ -182,30 +182,10 @@ static void bswrite_test(const char *message) {
     ASSERT_TRUE(NULL != (logger_list = android_logger_list_open(
         LOG_ID_EVENTS, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
 
+    static const char buffer[] = "Hello World";
     log_time ts(android_log_clockid());
 
-    ASSERT_LT(0, __android_log_bswrite(0, message));
-    size_t num_lines = 1, size = 0, length = 0, total = 0;
-    const char *cp = message;
-    while (*cp) {
-        if (*cp == '\n') {
-            if (cp[1]) {
-                ++num_lines;
-            }
-        } else {
-            ++size;
-        }
-        ++cp;
-        ++total;
-        ++length;
-        if ((LOGGER_ENTRY_MAX_PAYLOAD - 4 - 1 - 4) <= length) {
-            break;
-        }
-    }
-    while (*cp) {
-        ++cp;
-        ++total;
-    }
+    ASSERT_LT(0, __android_log_bswrite(0, buffer));
     usleep(1000000);
 
     int count = 0;
@@ -220,7 +200,7 @@ static void bswrite_test(const char *message) {
 
         if ((log_msg.entry.sec < (ts.tv_sec - 1))
          || ((ts.tv_sec + 1) < log_msg.entry.sec)
-         || ((size_t)log_msg.entry.len != (4 + 1 + 4 + length))
+         || (log_msg.entry.len != (4 + 1 + 4 + sizeof(buffer) - 1))
          || (log_msg.id() != LOG_ID_EVENTS)) {
             continue;
         }
@@ -231,22 +211,21 @@ static void bswrite_test(const char *message) {
             continue;
         }
 
-        size_t len = get4LE(eventData + 4 + 1);
-        if (len == total) {
+        int len = get4LE(eventData + 4 + 1);
+        if (len == (sizeof(buffer) - 1)) {
             ++count;
 
             AndroidLogFormat *logformat = android_log_format_new();
             EXPECT_TRUE(NULL != logformat);
             AndroidLogEntry entry;
             char msgBuf[1024];
-            int processBinaryLogBuffer = android_log_processBinaryLogBuffer(
-                &log_msg.entry_v1, &entry, NULL, msgBuf, sizeof(msgBuf));
-            EXPECT_EQ((length == total) ? 0 : -1, processBinaryLogBuffer);
-            if (processBinaryLogBuffer == 0) {
-                fflush(stderr);
-                EXPECT_EQ((int)((20 * num_lines) + size),
-                    android_log_printLogLine(logformat, fileno(stderr), &entry));
-            }
+            EXPECT_EQ(0, android_log_processBinaryLogBuffer(&log_msg.entry_v1,
+                                                            &entry,
+                                                            NULL,
+                                                            msgBuf,
+                                                            sizeof(msgBuf)));
+            fflush(stderr);
+            EXPECT_EQ(31, android_log_printLogLine(logformat, fileno(stderr), &entry));
             android_log_format_free(logformat);
         }
     }
@@ -256,55 +235,18 @@ static void bswrite_test(const char *message) {
     android_logger_list_close(logger_list);
 }
 
-TEST(liblog, __android_log_bswrite_and_print) {
-    bswrite_test("Hello World");
-}
-
-TEST(liblog, __android_log_bswrite_and_print__empty_string) {
-    bswrite_test("");
-}
-
-TEST(liblog, __android_log_bswrite_and_print__newline_prefix) {
-    bswrite_test("\nHello World\n");
-}
-
-TEST(liblog, __android_log_bswrite_and_print__newline_space_prefix) {
-    bswrite_test("\n Hello World \n");
-}
-
-TEST(liblog, __android_log_bswrite_and_print__multiple_newline) {
-    bswrite_test("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten");
-}
-
-static void buf_write_test(const char *message) {
+TEST(liblog, __android_log_bswrite__empty_string) {
     struct logger_list *logger_list;
 
     pid_t pid = getpid();
 
     ASSERT_TRUE(NULL != (logger_list = android_logger_list_open(
-        LOG_ID_MAIN, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
+        LOG_ID_EVENTS, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
 
-    static const char tag[] = "TEST__android_log_buf_write";
+    static const char buffer[] = "";
     log_time ts(android_log_clockid());
 
-    EXPECT_LT(0, __android_log_buf_write(LOG_ID_MAIN, ANDROID_LOG_INFO,
-                                         tag, message));
-    size_t num_lines = 1, size = 0, length = 0;
-    const char *cp = message;
-    while (*cp) {
-        if (*cp == '\n') {
-            if (cp[1]) {
-                ++num_lines;
-            }
-        } else {
-            ++size;
-        }
-        ++length;
-        if ((LOGGER_ENTRY_MAX_PAYLOAD - 2 - sizeof(tag)) <= length) {
-            break;
-        }
-        ++cp;
-    }
+    ASSERT_LT(0, __android_log_bswrite(0, buffer));
     usleep(1000000);
 
     int count = 0;
@@ -319,42 +261,39 @@ static void buf_write_test(const char *message) {
 
         if ((log_msg.entry.sec < (ts.tv_sec - 1))
          || ((ts.tv_sec + 1) < log_msg.entry.sec)
-         || ((size_t)log_msg.entry.len != (sizeof(tag) + length + 2))
-         || (log_msg.id() != LOG_ID_MAIN)) {
+         || (log_msg.entry.len != (4 + 1 + 4))
+         || (log_msg.id() != LOG_ID_EVENTS)) {
             continue;
         }
 
-        ++count;
+        char *eventData = log_msg.msg();
 
-        AndroidLogFormat *logformat = android_log_format_new();
-        EXPECT_TRUE(NULL != logformat);
-        AndroidLogEntry entry;
-        int processLogBuffer = android_log_processLogBuffer(&log_msg.entry_v1,
-                                                            &entry);
-        EXPECT_EQ(0, processLogBuffer);
-        if (processLogBuffer == 0) {
-            fflush(stderr);
-            EXPECT_EQ((int)(((11 + sizeof(tag)) * num_lines) + size),
-                android_log_printLogLine(logformat, fileno(stderr), &entry));
+        if (eventData[4] != EVENT_TYPE_STRING) {
+            continue;
         }
-        android_log_format_free(logformat);
+
+        int len = get4LE(eventData + 4 + 1);
+        if (len == 0) {
+            ++count;
+
+            AndroidLogFormat *logformat = android_log_format_new();
+            EXPECT_TRUE(NULL != logformat);
+            AndroidLogEntry entry;
+            char msgBuf[1024];
+            EXPECT_EQ(0, android_log_processBinaryLogBuffer(&log_msg.entry_v1,
+                                                            &entry,
+                                                            NULL,
+                                                            msgBuf,
+                                                            sizeof(msgBuf)));
+            fflush(stderr);
+            EXPECT_EQ(20, android_log_printLogLine(logformat, fileno(stderr), &entry));
+            android_log_format_free(logformat);
+        }
     }
 
     EXPECT_EQ(1, count);
 
     android_logger_list_close(logger_list);
-}
-
-TEST(liblog, __android_log_buf_write_and_print__empty) {
-    buf_write_test("");
-}
-
-TEST(liblog, __android_log_buf_write_and_print__newline_prefix) {
-    buf_write_test("\nHello World\n");
-}
-
-TEST(liblog, __android_log_buf_write_and_print__newline_space_prefix) {
-    buf_write_test("\n Hello World \n");
 }
 
 TEST(liblog, __security) {
@@ -828,7 +767,7 @@ TEST(liblog, android_logger_list_read__cpu_thread) {
     EXPECT_GT(one_percent_ticks, user_ticks + system_ticks);
 }
 
-static const char max_payload_tag[] = "TEST_max_payload_and_longish_tag_XXXX";
+static const char max_payload_tag[] = "TEST_max_payload_XXXX";
 #define SIZEOF_MAX_PAYLOAD_BUF (LOGGER_ENTRY_MAX_PAYLOAD - \
                                 sizeof(max_payload_tag) - 1)
 static const char max_payload_buf[] = "LEONATO\n\
@@ -957,10 +896,7 @@ Good Signior Leonato, you are come to meet your\n\
 trouble: the fashion of the world is to avoid\n\
 cost, and you encounter it\n\
 LEONATO\n\
-Never came trouble to my house in the likeness of your grace,\n\
-for trouble being gone, comfort should remain, but\n\
-when you depart from me, sorrow abides and happiness\n\
-takes his leave.";
+Never came trouble to my house in the likeness of your grace";
 
 TEST(liblog, max_payload) {
     pid_t pid = getpid();
@@ -1065,10 +1001,8 @@ TEST(liblog, __android_log_buf_print__maxtag) {
             fflush(stderr);
             int printLogLine =
                     android_log_printLogLine(logformat, fileno(stderr), &entry);
-            // Legacy tag truncation
             EXPECT_LE(128, printLogLine);
-            // Measured maximum if we try to print part of the tag as message
-            EXPECT_GT(LOGGER_ENTRY_MAX_PAYLOAD * 13 / 8, printLogLine);
+            EXPECT_GT(LOGGER_ENTRY_MAX_PAYLOAD, printLogLine);
         }
         android_log_format_free(logformat);
     }
@@ -1863,14 +1797,6 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__subtag_too
     android_logger_list_close(logger_list);
 }
 
-TEST(liblog, __android_log_bswrite_and_print___max) {
-    bswrite_test(max_payload_buf);
-}
-
-TEST(liblog, __android_log_buf_write_and_print__max) {
-    buf_write_test(max_payload_buf);
-}
-
 TEST(liblog, android_errorWriteLog__android_logger_list_read__success) {
     const int TAG = 123456785;
     const char SUBTAG[] = "test-subtag";
@@ -2524,57 +2450,4 @@ TEST(liblog, create_android_logger_overflow) {
     EXPECT_GT(0, android_log_write_list_begin(ctx));
     EXPECT_LE(0, android_log_destroy(&ctx));
     ASSERT_TRUE(NULL == ctx);
-}
-
-static const char __pmsg_file[] =
-        "/data/william-shakespeare/MuchAdoAboutNothing.txt";
-
-TEST(liblog, __android_log_pmsg_file_write) {
-    EXPECT_LT(0, __android_log_pmsg_file_write(
-            LOG_ID_CRASH, ANDROID_LOG_VERBOSE,
-            __pmsg_file, max_payload_buf, sizeof(max_payload_buf)));
-    fprintf(stderr, "Reboot, ensure file %s matches\n"
-                    "with liblog.__android_log_msg_file_read test\n",
-                    __pmsg_file);
-}
-
-ssize_t __pmsg_fn(log_id_t logId, char prio, const char *filename,
-                  const char *buf, size_t len, void *arg) {
-    EXPECT_TRUE(NULL == arg);
-    EXPECT_EQ(LOG_ID_CRASH, logId);
-    EXPECT_EQ(ANDROID_LOG_VERBOSE, prio);
-    EXPECT_FALSE(NULL == strstr(__pmsg_file, filename));
-    EXPECT_EQ(len, sizeof(max_payload_buf));
-    EXPECT_EQ(0, strcmp(max_payload_buf, buf));
-
-    ++signaled;
-    if ((len != sizeof(max_payload_buf)) ||
-            strcmp(max_payload_buf, buf)) {
-        fprintf(stderr, "comparison fails on content \"%s\"\n", buf);
-    }
-    return !arg ||
-           (LOG_ID_CRASH != logId) ||
-           (ANDROID_LOG_VERBOSE != prio) ||
-           !strstr(__pmsg_file, filename) ||
-           (len != sizeof(max_payload_buf)) ||
-           !!strcmp(max_payload_buf, buf) ? -ENOEXEC : 1;
-}
-
-TEST(liblog, __android_log_pmsg_file_read) {
-    signaled = 0;
-
-    ssize_t ret = __android_log_pmsg_file_read(
-            LOG_ID_CRASH, ANDROID_LOG_VERBOSE,
-            __pmsg_file, __pmsg_fn, NULL);
-
-    if (ret == -ENOENT) {
-        fprintf(stderr,
-            "No pre-boot results of liblog.__android_log_mesg_file_write to "
-            "compare with,\n"
-            "false positive test result.\n");
-        return;
-    }
-
-    EXPECT_LT(0, ret);
-    EXPECT_EQ(1U, signaled);
 }
