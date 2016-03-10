@@ -19,19 +19,23 @@
  * passed on to the underlying (fake) log device.  When not in the
  * simulator, messages are printed to stderr.
  */
+#include "fake_log_device.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#if !defined(_WIN32)
-#include <pthread.h>
-#endif
 #include <stdlib.h>
 #include <string.h>
 
 #include <log/logd.h>
 
-#include "fake_log_device.h"
-#include "log_cdefs.h"
+#if !defined(_WIN32)
+#include <pthread.h>
+#endif
+
+#ifndef __unused
+#define __unused __attribute__((__unused__))
+#endif
 
 #define kMaxTagLen  16      /* from the long-dead utils/Log.cpp */
 
@@ -508,7 +512,7 @@ static void showLog(LogState *state,
         }
         numLines -= 1;
     }
-
+    
     /*
      * Write the entire message to the log file with a single writev() call.
      * We need to use this rather than a collection of printf()s on a FILE*
@@ -527,10 +531,10 @@ static void showLog(LogState *state,
         int cc = writev(fileno(stderr), vec, v-vec);
 
         if (cc == totalLen) break;
-
+        
         if (cc < 0) {
             if(errno == EINTR) continue;
-
+            
                 /* can't really log the failure; for now, throw out a stderr */
             fprintf(stderr, "+++ LOG: write failed (errno=%d)\n", errno);
             break;
@@ -679,7 +683,7 @@ static void setRedirects()
     }
 }
 
-LIBLOG_HIDDEN int fakeLogOpen(const char *pathName, int flags)
+int fakeLogOpen(const char *pathName, int flags)
 {
     if (redirectOpen == NULL) {
         setRedirects();
@@ -698,22 +702,19 @@ LIBLOG_HIDDEN int fakeLogOpen(const char *pathName, int flags)
  * call is in the exit handler. Logging can continue in the exit handler to
  * help debug HOST tools ...
  */
-LIBLOG_HIDDEN int fakeLogClose(int fd)
+int fakeLogClose(int fd)
 {
     /* Assume that open() was called first. */
     return redirectClose(fd);
 }
 
-LIBLOG_HIDDEN ssize_t fakeLogWritev(int fd,
-                                    const struct iovec* vector, int count)
+ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count)
 {
     /* Assume that open() was called first. */
     return redirectWritev(fd, vector, count);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio,
-                                                const char *tag __unused,
-                                                int def)
+int __android_log_is_loggable(int prio, const char *tag __unused, int def)
 {
     int logLevel = def;
     return logLevel >= 0 && prio >= logLevel;
