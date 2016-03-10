@@ -34,10 +34,11 @@
 #include <log/logprint.h>
 #include <private/android_filesystem_config.h>
 
-#include "log_cdefs.h"
-
 #define MS_PER_NSEC 1000000
 #define US_PER_NSEC 1000
+
+/* open coded fragment, prevent circular dependencies */
+#define WEAK static
 
 typedef struct FilterInfo_t {
     char *mTag;
@@ -184,15 +185,13 @@ static android_LogPriority filterPriForTag(
  * returns 1 if this log line should be printed based on its priority
  * and tag, and 0 if it should not
  */
-LIBLOG_ABI_PUBLIC int android_log_shouldPrintLine (
-        AndroidLogFormat *p_format,
-        const char *tag,
-        android_LogPriority pri)
+int android_log_shouldPrintLine (
+        AndroidLogFormat *p_format, const char *tag, android_LogPriority pri)
 {
     return pri >= filterPriForTag(p_format, tag);
 }
 
-LIBLOG_ABI_PUBLIC AndroidLogFormat *android_log_format_new()
+AndroidLogFormat *android_log_format_new()
 {
     AndroidLogFormat *p_ret;
 
@@ -214,7 +213,7 @@ LIBLOG_ABI_PUBLIC AndroidLogFormat *android_log_format_new()
 
 static list_declare(convertHead);
 
-LIBLOG_ABI_PUBLIC void android_log_format_free(AndroidLogFormat *p_format)
+void android_log_format_free(AndroidLogFormat *p_format)
 {
     FilterInfo *p_info, *p_info_old;
 
@@ -237,8 +236,7 @@ LIBLOG_ABI_PUBLIC void android_log_format_free(AndroidLogFormat *p_format)
     }
 }
 
-LIBLOG_ABI_PUBLIC int android_log_setPrintFormat(
-        AndroidLogFormat *p_format,
+int android_log_setPrintFormat(AndroidLogFormat *p_format,
         AndroidLogPrintFormat format)
 {
     switch (format) {
@@ -279,8 +277,7 @@ static const char utc[] = "UTC";
 /**
  * Returns FORMAT_OFF on invalid string
  */
-LIBLOG_ABI_PUBLIC AndroidLogPrintFormat android_log_formatFromString(
-        const char * formatString)
+AndroidLogPrintFormat android_log_formatFromString(const char * formatString)
 {
     static AndroidLogPrintFormat format;
 
@@ -344,8 +341,7 @@ LIBLOG_ABI_PUBLIC AndroidLogPrintFormat android_log_formatFromString(
  * Assumes single threaded execution
  */
 
-LIBLOG_ABI_PUBLIC int android_log_addFilterRule(
-        AndroidLogFormat *p_format,
+int android_log_addFilterRule(AndroidLogFormat *p_format,
         const char *filterExpression)
 {
     size_t tagNameLength;
@@ -423,8 +419,7 @@ error:
  *
  */
 
-LIBLOG_ABI_PUBLIC int android_log_addFilterString(
-        AndroidLogFormat *p_format,
+int android_log_addFilterString(AndroidLogFormat *p_format,
         const char *filterString)
 {
     char *filterStringCopy = strdup (filterString);
@@ -458,9 +453,8 @@ error:
  * Returns 0 on success and -1 on invalid wire format (entry will be
  * in unspecified state)
  */
-LIBLOG_ABI_PUBLIC int android_log_processLogBuffer(
-        struct logger_entry *buf,
-        AndroidLogEntry *entry)
+int android_log_processLogBuffer(struct logger_entry *buf,
+                                 AndroidLogEntry *entry)
 {
     entry->tv_sec = buf->sec;
     entry->tv_nsec = buf->nsec;
@@ -740,11 +734,9 @@ no_room:
  * it however we choose, which means we can't really use a fixed-size buffer
  * here.
  */
-LIBLOG_ABI_PUBLIC int android_log_processBinaryLogBuffer(
-        struct logger_entry *buf,
-        AndroidLogEntry *entry,
-        const EventTagMap *map,
-        char *messageBuf, int messageBufLen)
+int android_log_processBinaryLogBuffer(struct logger_entry *buf,
+    AndroidLogEntry *entry, const EventTagMap* map, char* messageBuf,
+    int messageBufLen)
 {
     size_t inCount;
     unsigned int tagIndex;
@@ -860,7 +852,7 @@ LIBLOG_ABI_PUBLIC int android_log_processBinaryLogBuffer(
  * _also_ be part of libutils/Unicode.cpp if its usefullness needs to
  * propagate globally.
  */
-LIBLOG_WEAK ssize_t utf8_character_length(const char *src, size_t len)
+WEAK ssize_t utf8_character_length(const char *src, size_t len)
 {
     const char *cur = src;
     const char first_char = *cur++;
@@ -964,7 +956,7 @@ static size_t convertPrintable(char *p, const char *message, size_t messageLen)
     return p - begin;
 }
 
-static char *readSeconds(char *e, struct timespec *t)
+char *readSeconds(char *e, struct timespec *t)
 {
     unsigned long multiplier;
     char *p;
@@ -1251,12 +1243,12 @@ static void convertMonotonic(struct timespec *result,
  * Returns NULL on malloc error
  */
 
-LIBLOG_ABI_PUBLIC char *android_log_formatLogLine (
-        AndroidLogFormat *p_format,
-        char *defaultBuffer,
-        size_t defaultBufferSize,
-        const AndroidLogEntry *entry,
-        size_t *p_outLength)
+char *android_log_formatLogLine (
+    AndroidLogFormat *p_format,
+    char *defaultBuffer,
+    size_t defaultBufferSize,
+    const AndroidLogEntry *entry,
+    size_t *p_outLength)
 {
 #if !defined(_WIN32)
     struct tm tmBuf;
@@ -1534,10 +1526,10 @@ LIBLOG_ABI_PUBLIC char *android_log_formatLogLine (
  * Returns count bytes written
  */
 
-LIBLOG_ABI_PUBLIC int android_log_printLogLine(
-        AndroidLogFormat *p_format,
-        int fd,
-        const AndroidLogEntry *entry)
+int android_log_printLogLine(
+    AndroidLogFormat *p_format,
+    int fd,
+    const AndroidLogEntry *entry)
 {
     int ret;
     char defaultBuffer[512];
