@@ -21,7 +21,6 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
-#include <pwd.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,11 +28,11 @@
 #include <string.h>
 #include <inttypes.h>
 #include <sys/param.h>
-#include <sys/types.h>
 
 #include <cutils/list.h>
 #include <log/logd.h>
 #include <log/logprint.h>
+#include <private/android_filesystem_config.h>
 
 #include "log_portability.h"
 
@@ -1353,17 +1352,17 @@ LIBLOG_ABI_PUBLIC char *android_log_formatLogLine (
     uid[0] = '\0';
     if (p_format->uid_output) {
         if (entry->uid >= 0) {
+            const struct android_id_info *info = android_ids;
+            size_t i;
 
-            /*
-             * This code is Android specific, bionic guarantees that
-             * calls to non-reentrant getpwuid() are thread safe.
-             */
-#ifndef __BIONIC__
-#warning "This code assumes that getpwuid is thread safe, only true with Bionic!"
-#endif
-            struct passwd* pwd = getpwuid(entry->uid);
-            if (pwd && (strlen(pwd->pw_name) <= 5)) {
-                 snprintf(uid, sizeof(uid), "%5s:", pwd->pw_name);
+            for (i = 0; i < android_id_count; ++i) {
+                if (info->aid == (unsigned int)entry->uid) {
+                    break;
+                }
+                ++info;
+            }
+            if ((i < android_id_count) && (strlen(info->name) <= 5)) {
+                 snprintf(uid, sizeof(uid), "%5s:", info->name);
             } else {
                  // Not worth parsing package list, names all longer than 5
                  snprintf(uid, sizeof(uid), "%5d:", entry->uid);
