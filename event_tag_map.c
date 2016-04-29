@@ -73,7 +73,7 @@ LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName)
     if (newTagMap == NULL)
         return NULL;
 
-    fd = open(fileName, O_RDONLY | O_CLOEXEC);
+    fd = open(fileName, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "%s: unable to open map '%s': %s\n",
             OUT_TAG, fileName, strerror(errno));

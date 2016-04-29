@@ -151,13 +151,13 @@ static int pmsgRead(struct android_log_logger_list *logger_list,
     memset(log_msg, 0, sizeof(*log_msg));
 
     if (transp->context.fd <= 0) {
-        int fd = open("/sys/fs/pstore/pmsg-ramoops-0", O_RDONLY | O_CLOEXEC);
+        int fd = open("/sys/fs/pstore/pmsg-ramoops-0", O_RDONLY);
 
         if (fd < 0) {
             return -errno;
         }
         if (fd == 0) { /* Argggg */
-            fd = open("/sys/fs/pstore/pmsg-ramoops-0", O_RDONLY | O_CLOEXEC);
+            fd = open("/sys/fs/pstore/pmsg-ramoops-0", O_RDONLY);
             close(0);
             if (fd < 0) {
                 return -errno;
