@@ -24,8 +24,6 @@
 #include <log/event_tag_map.h>
 #include <log/log.h>
 
-#include "log_portability.h"
-
 #define OUT_TAG "EventTagMap"
 
 /*
@@ -63,7 +61,7 @@ static int sortTags(EventTagMap* map);
  * We create a private mapping because we want to terminate the log tag
  * strings with '\0'.
  */
-LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName)
+EventTagMap* android_openEventTagMap(const char* fileName)
 {
     EventTagMap* newTagMap;
     off_t end;
@@ -73,7 +71,7 @@ LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName)
     if (newTagMap == NULL)
         return NULL;
 
-    fd = open(fileName, O_RDONLY | O_CLOEXEC);
+    fd = open(fileName, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "%s: unable to open map '%s': %s\n",
             OUT_TAG, fileName, strerror(errno));
@@ -99,9 +97,6 @@ LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName)
     if (processFile(newTagMap) != 0)
         goto fail;
 
-    if (fd >= 0)
-      close(fd);
-
     return newTagMap;
 
 fail:
@@ -114,7 +109,7 @@ fail:
 /*
  * Close the map.
  */
-LIBLOG_ABI_PUBLIC void android_closeEventTagMap(EventTagMap* map)
+void android_closeEventTagMap(EventTagMap* map)
 {
     if (map == NULL)
         return;
@@ -128,8 +123,7 @@ LIBLOG_ABI_PUBLIC void android_closeEventTagMap(EventTagMap* map)
  *
  * The entries are sorted by tag number, so we can do a binary search.
  */
-LIBLOG_ABI_PUBLIC const char* android_lookupEventTag(const EventTagMap* map,
-                                                     int tag)
+const char* android_lookupEventTag(const EventTagMap* map, int tag)
 {
     int hi, lo, mid;
 
