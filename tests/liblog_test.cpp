@@ -132,12 +132,17 @@ TEST(liblog, __android_log_btwrite__android_logger_list_read) {
     ASSERT_TRUE(NULL != (logger_list = android_logger_list_open(
         LOG_ID_EVENTS, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
 
+    // Check that we can close and reopen the logger
     log_time ts(CLOCK_MONOTONIC);
-
     ASSERT_LT(0, __android_log_btwrite(0, EVENT_TYPE_LONG, &ts, sizeof(ts)));
+    __android_log_close();
+
+    log_time ts1(CLOCK_MONOTONIC);
+    ASSERT_LT(0, __android_log_btwrite(0, EVENT_TYPE_LONG, &ts1, sizeof(ts1)));
     usleep(1000000);
 
     int count = 0;
+    int second_count = 0;
 
     for (;;) {
         log_msg log_msg;
@@ -154,17 +159,20 @@ TEST(liblog, __android_log_btwrite__android_logger_list_read) {
 
         char *eventData = log_msg.msg();
 
-        if (eventData[4] != EVENT_TYPE_LONG) {
+        if (!eventData || (eventData[4] != EVENT_TYPE_LONG)) {
             continue;
         }
 
         log_time tx(eventData + 4 + 1);
         if (ts == tx) {
             ++count;
+        } else if (ts1 == tx) {
+            ++second_count;
         }
     }
 
     EXPECT_EQ(1, count);
+    EXPECT_EQ(1, second_count);
 
     android_logger_list_close(logger_list);
 }
@@ -174,7 +182,7 @@ static inline int32_t get4LE(const char* src)
     return src[0] | (src[1] << 8) | (src[2] << 16) | (src[3] << 24);
 }
 
-TEST(liblog, __android_log_bswrite) {
+static void bswrite_test(const char *message) {
     struct logger_list *logger_list;
 
     pid_t pid = getpid();
@@ -182,10 +190,30 @@ TEST(liblog, __android_log_bswrite) {
     ASSERT_TRUE(NULL != (logger_list = android_logger_list_open(
         LOG_ID_EVENTS, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
 
-    static const char buffer[] = "Hello World";
     log_time ts(android_log_clockid());
 
-    ASSERT_LT(0, __android_log_bswrite(0, buffer));
+    ASSERT_LT(0, __android_log_bswrite(0, message));
+    size_t num_lines = 1, size = 0, length = 0, total = 0;
+    const char *cp = message;
+    while (*cp) {
+        if (*cp == '\n') {
+            if (cp[1]) {
+                ++num_lines;
+            }
+        } else {
+            ++size;
+        }
+        ++cp;
+        ++total;
+        ++length;
+        if ((LOGGER_ENTRY_MAX_PAYLOAD - 4 - 1 - 4) <= length) {
+            break;
+        }
+    }
+    while (*cp) {
+        ++cp;
+        ++total;
+    }
     usleep(1000000);
 
     int count = 0;
@@ -200,32 +228,33 @@ TEST(liblog, __android_log_bswrite) {
 
         if ((log_msg.entry.sec < (ts.tv_sec - 1))
          || ((ts.tv_sec + 1) < log_msg.entry.sec)
-         || (log_msg.entry.len != (4 + 1 + 4 + sizeof(buffer) - 1))
+         || ((size_t)log_msg.entry.len != (4 + 1 + 4 + length))
          || (log_msg.id() != LOG_ID_EVENTS)) {
             continue;
         }
 
         char *eventData = log_msg.msg();
 
-        if (eventData[4] != EVENT_TYPE_STRING) {
+        if (!eventData || (eventData[4] != EVENT_TYPE_STRING)) {
             continue;
         }
 
-        int len = get4LE(eventData + 4 + 1);
-        if (len == (sizeof(buffer) - 1)) {
+        size_t len = get4LE(eventData + 4 + 1);
+        if (len == total) {
             ++count;
 
             AndroidLogFormat *logformat = android_log_format_new();
             EXPECT_TRUE(NULL != logformat);
             AndroidLogEntry entry;
             char msgBuf[1024];
-            EXPECT_EQ(0, android_log_processBinaryLogBuffer(&log_msg.entry_v1,
-                                                            &entry,
-                                                            NULL,
-                                                            msgBuf,
-                                                            sizeof(msgBuf)));
-            fflush(stderr);
-            EXPECT_EQ(31, android_log_printLogLine(logformat, fileno(stderr), &entry));
+            int processBinaryLogBuffer = android_log_processBinaryLogBuffer(
+                &log_msg.entry_v1, &entry, NULL, msgBuf, sizeof(msgBuf));
+            EXPECT_EQ((length == total) ? 0 : -1, processBinaryLogBuffer);
+            if (processBinaryLogBuffer == 0) {
+                fflush(stderr);
+                EXPECT_EQ((int)((20 * num_lines) + size),
+                    android_log_printLogLine(logformat, fileno(stderr), &entry));
+            }
             android_log_format_free(logformat);
         }
     }
@@ -235,18 +264,55 @@ TEST(liblog, __android_log_bswrite) {
     android_logger_list_close(logger_list);
 }
 
-TEST(liblog, __android_log_bswrite__empty_string) {
+TEST(liblog, __android_log_bswrite_and_print) {
+    bswrite_test("Hello World");
+}
+
+TEST(liblog, __android_log_bswrite_and_print__empty_string) {
+    bswrite_test("");
+}
+
+TEST(liblog, __android_log_bswrite_and_print__newline_prefix) {
+    bswrite_test("\nHello World\n");
+}
+
+TEST(liblog, __android_log_bswrite_and_print__newline_space_prefix) {
+    bswrite_test("\n Hello World \n");
+}
+
+TEST(liblog, __android_log_bswrite_and_print__multiple_newline) {
+    bswrite_test("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten");
+}
+
+static void buf_write_test(const char *message) {
     struct logger_list *logger_list;
 
     pid_t pid = getpid();
 
     ASSERT_TRUE(NULL != (logger_list = android_logger_list_open(
-        LOG_ID_EVENTS, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
+        LOG_ID_MAIN, ANDROID_LOG_RDONLY | ANDROID_LOG_NONBLOCK, 1000, pid)));
 
-    static const char buffer[] = "";
+    static const char tag[] = "TEST__android_log_buf_write";
     log_time ts(android_log_clockid());
 
-    ASSERT_LT(0, __android_log_bswrite(0, buffer));
+    EXPECT_LT(0, __android_log_buf_write(LOG_ID_MAIN, ANDROID_LOG_INFO,
+                                         tag, message));
+    size_t num_lines = 1, size = 0, length = 0;
+    const char *cp = message;
+    while (*cp) {
+        if (*cp == '\n') {
+            if (cp[1]) {
+                ++num_lines;
+            }
+        } else {
+            ++size;
+        }
+        ++length;
+        if ((LOGGER_ENTRY_MAX_PAYLOAD - 2 - sizeof(tag)) <= length) {
+            break;
+        }
+        ++cp;
+    }
     usleep(1000000);
 
     int count = 0;
@@ -261,39 +327,42 @@ TEST(liblog, __android_log_bswrite__empty_string) {
 
         if ((log_msg.entry.sec < (ts.tv_sec - 1))
          || ((ts.tv_sec + 1) < log_msg.entry.sec)
-         || (log_msg.entry.len != (4 + 1 + 4))
-         || (log_msg.id() != LOG_ID_EVENTS)) {
+         || ((size_t)log_msg.entry.len != (sizeof(tag) + length + 2))
+         || (log_msg.id() != LOG_ID_MAIN)) {
             continue;
         }
 
-        char *eventData = log_msg.msg();
+        ++count;
 
-        if (eventData[4] != EVENT_TYPE_STRING) {
-            continue;
-        }
-
-        int len = get4LE(eventData + 4 + 1);
-        if (len == 0) {
-            ++count;
-
-            AndroidLogFormat *logformat = android_log_format_new();
-            EXPECT_TRUE(NULL != logformat);
-            AndroidLogEntry entry;
-            char msgBuf[1024];
-            EXPECT_EQ(0, android_log_processBinaryLogBuffer(&log_msg.entry_v1,
-                                                            &entry,
-                                                            NULL,
-                                                            msgBuf,
-                                                            sizeof(msgBuf)));
+        AndroidLogFormat *logformat = android_log_format_new();
+        EXPECT_TRUE(NULL != logformat);
+        AndroidLogEntry entry;
+        int processLogBuffer = android_log_processLogBuffer(&log_msg.entry_v1,
+                                                            &entry);
+        EXPECT_EQ(0, processLogBuffer);
+        if (processLogBuffer == 0) {
             fflush(stderr);
-            EXPECT_EQ(20, android_log_printLogLine(logformat, fileno(stderr), &entry));
-            android_log_format_free(logformat);
+            EXPECT_EQ((int)(((11 + sizeof(tag)) * num_lines) + size),
+                android_log_printLogLine(logformat, fileno(stderr), &entry));
         }
+        android_log_format_free(logformat);
     }
 
     EXPECT_EQ(1, count);
 
     android_logger_list_close(logger_list);
+}
+
+TEST(liblog, __android_log_buf_write_and_print__empty) {
+    buf_write_test("");
+}
+
+TEST(liblog, __android_log_buf_write_and_print__newline_prefix) {
+    buf_write_test("\nHello World\n");
+}
+
+TEST(liblog, __android_log_buf_write_and_print__newline_space_prefix) {
+    buf_write_test("\n Hello World \n");
 }
 
 TEST(liblog, __security) {
@@ -445,7 +514,7 @@ TEST(liblog, __security_buffer) {
 
         char *eventData = log_msg.msg();
 
-        if (eventData[4] != EVENT_TYPE_LONG) {
+        if (!eventData || (eventData[4] != EVENT_TYPE_LONG)) {
             continue;
         }
 
@@ -576,7 +645,7 @@ TEST(liblog, android_logger_list_read__cpu_signal) {
 
         char *eventData = log_msg.msg();
 
-        if (eventData[4] != EVENT_TYPE_LONG) {
+        if (!eventData || (eventData[4] != EVENT_TYPE_LONG)) {
             continue;
         }
 
@@ -727,7 +796,7 @@ TEST(liblog, android_logger_list_read__cpu_thread) {
 
         char *eventData = log_msg.msg();
 
-        if (eventData[4] != EVENT_TYPE_LONG) {
+        if (!eventData || (eventData[4] != EVENT_TYPE_LONG)) {
             continue;
         }
 
@@ -767,7 +836,7 @@ TEST(liblog, android_logger_list_read__cpu_thread) {
     EXPECT_GT(one_percent_ticks, user_ticks + system_ticks);
 }
 
-static const char max_payload_tag[] = "TEST_max_payload_XXXX";
+static const char max_payload_tag[] = "TEST_max_payload_and_longish_tag_XXXX";
 #define SIZEOF_MAX_PAYLOAD_BUF (LOGGER_ENTRY_MAX_PAYLOAD - \
                                 sizeof(max_payload_tag) - 1)
 static const char max_payload_buf[] = "LEONATO\n\
@@ -929,9 +998,9 @@ TEST(liblog, max_payload) {
             continue;
         }
 
-        char *data = log_msg.msg() + 1;
+        char *data = log_msg.msg();
 
-        if (strcmp(data, tag)) {
+        if (!data || strcmp(++data, tag)) {
             continue;
         }
 
@@ -1046,9 +1115,9 @@ TEST(liblog, too_big_payload) {
             continue;
         }
 
-        char *data = log_msg.msg() + 1;
+        char *data = log_msg.msg();
 
-        if (strcmp(data, tag)) {
+        if (!data || strcmp(++data, tag)) {
             continue;
         }
 
@@ -1307,6 +1376,7 @@ TEST(liblog, is_loggable) {
             snprintf(key, sizeof(key), "%s%s", log_namespace, tag);
             fprintf(stderr, "i=%zu j=%zu property_set(\"%s\",\"%s\")\r",
                     i, j, key, buf);
+            usleep(20000);
             property_set(key, buf);
             bool android_log_is_loggable = __android_log_is_loggable(
                 levels[i].level, tag, ANDROID_LOG_DEBUG);
@@ -1332,6 +1402,7 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key, "");
 
             fprintf(stderr, "i=%zu j=%zu property_set(\"%s\",\"%s\")\r",
@@ -1361,6 +1432,7 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key + base_offset, "");
 
             strcpy(key, log_namespace);
@@ -1392,6 +1464,7 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key, "");
 
             fprintf(stderr, "i=%zu j=%zu property_set(\"%s\",\"%s\")\r",
@@ -1421,6 +1494,7 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key + base_offset, "");
         }
     }
@@ -1428,6 +1502,7 @@ TEST(liblog, is_loggable) {
     // All combinations of level and tag properties, but with global set to INFO
     strcpy(key, log_namespace);
     key[sizeof(log_namespace) - 2] = '\0';
+    usleep(20000);
     property_set(key, "I");
     snprintf(key, sizeof(key), "%s%s", log_namespace, tag);
     for(size_t i = 0; i < (sizeof(levels) / sizeof(levels[0])); ++i) {
@@ -1441,6 +1516,7 @@ TEST(liblog, is_loggable) {
 
             fprintf(stderr, "i=%zu j=%zu property_set(\"%s\",\"%s\")\r",
                     i, j, key, buf);
+            usleep(20000);
             property_set(key, buf);
             bool android_log_is_loggable = __android_log_is_loggable(
                 levels[i].level, tag, ANDROID_LOG_DEBUG);
@@ -1466,6 +1542,7 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key, "");
 
             fprintf(stderr, "i=%zu j=%zu property_set(\"%s\",\"%s\")\r",
@@ -1495,12 +1572,14 @@ TEST(liblog, is_loggable) {
                         levels[i].level, tag, ANDROID_LOG_DEBUG));
                 }
             }
+            usleep(20000);
             property_set(key + base_offset, "");
         }
     }
 
     // reset parms
     snprintf(key, sizeof(key), "%s%s", log_namespace, tag);
+    usleep(20000);
     property_set(key, hold[0]);
     property_set(key + base_offset, hold[1]);
     strcpy(key, log_namespace);
@@ -1535,6 +1614,9 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__typical) {
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
 
         // Tag
         int tag = get4LE(eventData);
@@ -1616,6 +1698,10 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__data_too_l
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
+
         char *original = eventData;
 
         // Tag
@@ -1703,6 +1789,9 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__null_data)
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
 
         // Tag
         int tag = get4LE(eventData);
@@ -1746,6 +1835,9 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__subtag_too
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
 
         // Tag
         int tag = get4LE(eventData);
@@ -1802,6 +1894,14 @@ TEST(liblog, android_errorWriteWithInfoLog__android_logger_list_read__subtag_too
     android_logger_list_close(logger_list);
 }
 
+TEST(liblog, __android_log_bswrite_and_print___max) {
+    bswrite_test(max_payload_buf);
+}
+
+TEST(liblog, __android_log_buf_write_and_print__max) {
+    buf_write_test(max_payload_buf);
+}
+
 TEST(liblog, android_errorWriteLog__android_logger_list_read__success) {
     const int TAG = 123456785;
     const char SUBTAG[] = "test-subtag";
@@ -1825,6 +1925,9 @@ TEST(liblog, android_errorWriteLog__android_logger_list_read__success) {
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
 
         // Tag
         int tag = get4LE(eventData);
@@ -1882,6 +1985,9 @@ TEST(liblog, android_errorWriteLog__android_logger_list_read__null_subtag) {
         }
 
         char *eventData = log_msg.msg();
+        if (!eventData) {
+            continue;
+        }
 
         // Tag
         int tag = get4LE(eventData);
@@ -2370,16 +2476,19 @@ static void create_android_logger(const char *(*fn)(uint32_t tag, size_t &expect
         android_log_format_free(logformat);
 
         // test buffer reading API
-        snprintf(msgBuf, sizeof(msgBuf), "I/[%d]", get4LE(eventData));
-        print_barrier();
-        fprintf(stderr, "%-10s(%5u): ", msgBuf, pid);
-        memset(msgBuf, 0, sizeof(msgBuf));
-        int buffer_to_string = android_log_buffer_to_string(
-            eventData + sizeof(uint32_t),
-            log_msg.entry.len - sizeof(uint32_t),
-            msgBuf, sizeof(msgBuf));
-        fprintf(stderr, "%s\n", msgBuf);
-        print_barrier();
+        int buffer_to_string = -1;
+        if (eventData) {
+            snprintf(msgBuf, sizeof(msgBuf), "I/[%d]", get4LE(eventData));
+            print_barrier();
+            fprintf(stderr, "%-10s(%5u): ", msgBuf, pid);
+            memset(msgBuf, 0, sizeof(msgBuf));
+            buffer_to_string = android_log_buffer_to_string(
+                eventData + sizeof(uint32_t),
+                log_msg.entry.len - sizeof(uint32_t),
+                msgBuf, sizeof(msgBuf));
+            fprintf(stderr, "%s\n", msgBuf);
+            print_barrier();
+        }
         EXPECT_EQ(0, buffer_to_string);
         EXPECT_EQ(strlen(expected_string), strlen(msgBuf));
         EXPECT_EQ(0, strcmp(expected_string, msgBuf));
