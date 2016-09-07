@@ -124,33 +124,35 @@ struct android_log_transport_context {
 
 /* assumes caller has structures read-locked, single threaded, or fenced */
 #define transport_context_for_each(transp, logger_list)              \
-  for (transp = node_to_item((logger_list)->transport.next,          \
+  for ((transp) = node_to_item((logger_list)->transport.next,        \
                              struct android_log_transport_context,   \
                              node);                                  \
-       (transp != node_to_item(&(logger_list)->transport,            \
+       ((transp) != node_to_item(&(logger_list)->transport,          \
                                struct android_log_transport_context, \
                                node)) &&                             \
-           (transp->parent == (logger_list));                        \
-       transp = node_to_item(transp->node.next,                      \
+           ((transp)->parent == (logger_list));                      \
+       (transp) = node_to_item((transp)->node.next,                  \
                              struct android_log_transport_context, node))
 
 #define logger_for_each(logp, logger_list)                          \
-    for (logp = node_to_item((logger_list)->logger.next,            \
+    for ((logp) = node_to_item((logger_list)->logger.next,          \
                              struct android_log_logger, node);      \
-         (logp != node_to_item(&(logger_list)->logger,              \
+         ((logp) != node_to_item(&(logger_list)->logger,            \
                                struct android_log_logger, node)) && \
-             (logp->parent == (logger_list));                       \
-         logp = node_to_item((logp)->node.next,                     \
+             ((logp)->parent == (logger_list));                     \
+         (logp) = node_to_item((logp)->node.next,                   \
                              struct android_log_logger, node))
 
 /* OS specific dribs and drabs */
 
 #if defined(_WIN32)
+#include <private/android_filesystem_config.h>
 typedef uint32_t uid_t;
+static inline uid_t __android_log_uid() { return AID_SYSTEM; }
+#else
+static inline uid_t __android_log_uid() { return getuid(); }
 #endif
 
-LIBLOG_HIDDEN uid_t __android_log_uid();
-LIBLOG_HIDDEN pid_t __android_log_pid();
 LIBLOG_HIDDEN void __android_log_lock();
 LIBLOG_HIDDEN int __android_log_trylock();
 LIBLOG_HIDDEN void __android_log_unlock();
