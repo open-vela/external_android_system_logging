@@ -19,19 +19,23 @@
  * passed on to the underlying (fake) log device.  When not in the
  * simulator, messages are printed to stderr.
  */
+#include "fake_log_device.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#if !defined(_WIN32)
-#include <pthread.h>
-#endif
 #include <stdlib.h>
 #include <string.h>
 
 #include <log/logd.h>
 
-#include "fake_log_device.h"
-#include "log_portability.h"
+#if !defined(_WIN32)
+#include <pthread.h>
+#endif
+
+#ifndef __unused
+#define __unused __attribute__((__unused__))
+#endif
 
 #define kMaxTagLen  16      /* from the long-dead utils/Log.cpp */
 
@@ -65,7 +69,7 @@ typedef struct LogState {
     int     fakeFd;
 
     /* a printable name for this fake device */
-    char   debugName[sizeof("/dev/log/security")];
+    char   *debugName;
 
     /* nonzero if this is a binary log */
     int     isBinary;
@@ -95,10 +99,6 @@ static pthread_mutex_t fakeLogDeviceLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void lock()
 {
-    /*
-     * If we trigger a signal handler in the middle of locked activity and the
-     * signal handler logs a message, we could get into a deadlock state.
-     */
     pthread_mutex_lock(&fakeLogDeviceLock);
 }
 
@@ -106,12 +106,9 @@ static void unlock()
 {
     pthread_mutex_unlock(&fakeLogDeviceLock);
 }
-
 #else   // !defined(_WIN32)
-
 #define lock() ((void)0)
 #define unlock() ((void)0)
-
 #endif  // !defined(_WIN32)
 
 
@@ -119,8 +116,8 @@ static void unlock()
  * File descriptor management.
  */
 #define FAKE_FD_BASE 10000
-#define MAX_OPEN_LOGS 8
-static LogState openLogTable[MAX_OPEN_LOGS];
+#define MAX_OPEN_LOGS 16
+static LogState *openLogTable[MAX_OPEN_LOGS];
 
 /*
  * Allocate an fd and associate a new LogState with it.
@@ -130,10 +127,11 @@ static LogState *createLogState()
 {
     size_t i;
 
-    for (i = 0; i < (sizeof(openLogTable) / sizeof(openLogTable[0])); i++) {
-        if (openLogTable[i].fakeFd == 0) {
-            openLogTable[i].fakeFd = FAKE_FD_BASE + i;
-            return &openLogTable[i];
+    for (i = 0; i < sizeof(openLogTable); i++) {
+        if (openLogTable[i] == NULL) {
+            openLogTable[i] = calloc(1, sizeof(LogState));
+            openLogTable[i]->fakeFd = FAKE_FD_BASE + i;
+            return openLogTable[i];
         }
     }
     return NULL;
@@ -145,7 +143,7 @@ static LogState *createLogState()
 static LogState *fdToLogState(int fd)
 {
     if (fd >= FAKE_FD_BASE && fd < FAKE_FD_BASE + MAX_OPEN_LOGS) {
-        return &openLogTable[fd - FAKE_FD_BASE];
+        return openLogTable[fd - FAKE_FD_BASE];
     }
     return NULL;
 }
@@ -161,7 +159,9 @@ static void deleteFakeFd(int fd)
 
     ls = fdToLogState(fd);
     if (ls != NULL) {
-        memset(&openLogTable[fd - FAKE_FD_BASE], 0, sizeof(openLogTable[0]));
+        openLogTable[fd - FAKE_FD_BASE] = NULL;
+        free(ls->debugName);
+        free(ls);
     }
 
     unlock();
@@ -184,12 +184,10 @@ static void configureInitialState(const char* pathName, LogState* logState)
 {
     static const int kDevLogLen = sizeof("/dev/log/") - 1;
 
-    strncpy(logState->debugName, pathName, sizeof(logState->debugName));
-    logState->debugName[sizeof(logState->debugName) - 1] = '\0';
+    logState->debugName = strdup(pathName);
 
     /* identify binary logs */
-    if (!strcmp(pathName + kDevLogLen, "events") ||
-            !strcmp(pathName + kDevLogLen, "security")) {
+    if (strcmp(pathName + kDevLogLen, "events") == 0) {
         logState->isBinary = 1;
     }
 
@@ -213,7 +211,8 @@ static void configureInitialState(const char* pathName, LogState* logState)
 
             i = 0;
             while (*tags != '\0' && !isspace(*tags) && *tags != ':' &&
-                    i < kMaxTagLen) {
+                i < kMaxTagLen)
+            {
                 tagName[i++] = *tags++;
             }
             if (i == kMaxTagLen) {
@@ -314,9 +313,9 @@ static const char* getPriorityString(int priority)
     };
     int idx;
 
-    idx = (int)priority - (int)ANDROID_LOG_VERBOSE;
+    idx = (int) priority - (int) ANDROID_LOG_VERBOSE;
     if (idx < 0 ||
-            idx >= (int)(sizeof(priorityStrings) / sizeof(priorityStrings[0])))
+        idx >= (int) (sizeof(priorityStrings) / sizeof(priorityStrings[0])))
         return "?unknown?";
     return priorityStrings[idx];
 }
@@ -361,11 +360,7 @@ static void showLog(LogState *state,
     char prefixBuf[128], suffixBuf[128];
     char priChar;
     time_t when;
-#if !defined(_WIN32)
     pid_t pid, tid;
-#else
-    uint32_t pid, tid;
-#endif
 
     TRACE("LOG %d: %s %s", logPrio, tag, msg);
 
@@ -448,15 +443,13 @@ static void showLog(LogState *state,
     while (p < end) {
         if (*p++ == '\n') numLines++;
     }
-    if (p > msg && *(p-1) != '\n') {
-        numLines++;
-    }
+    if (p > msg && *(p-1) != '\n') numLines++;
 
     /*
      * Create an array of iovecs large enough to write all of
      * the lines with a prefix and a suffix.
      */
-    const size_t INLINE_VECS = 64;
+    const size_t INLINE_VECS = 6;
     const size_t MAX_LINES   = ((size_t)~0)/(3*sizeof(struct iovec*));
     struct iovec stackVec[INLINE_VECS];
     struct iovec* vec = stackVec;
@@ -465,13 +458,13 @@ static void showLog(LogState *state,
     if (numLines > MAX_LINES)
         numLines = MAX_LINES;
 
-    numVecs = numLines * 3;  // 3 iovecs per line.
+    numVecs = numLines*3;  // 3 iovecs per line.
     if (numVecs > INLINE_VECS) {
         vec = (struct iovec*)malloc(sizeof(struct iovec)*numVecs);
         if (vec == NULL) {
             msg = "LOG: write failed, no memory";
-            numVecs = INLINE_VECS;
-            numLines = numVecs / 3;
+            numVecs = 3;
+            numLines = 1;
             vec = stackVec;
         }
     }
@@ -490,9 +483,7 @@ static void showLog(LogState *state,
             v++;
         }
         const char* start = p;
-        while (p < end && *p != '\n') {
-            p++;
-        }
+        while (p < end && *p != '\n') p++;
         if ((p-start) > 0) {
             v->iov_base = (void*)start;
             v->iov_len = p-start;
@@ -508,7 +499,7 @@ static void showLog(LogState *state,
         }
         numLines -= 1;
     }
-
+    
     /*
      * Write the entire message to the log file with a single writev() call.
      * We need to use this rather than a collection of printf()s on a FILE*
@@ -527,10 +518,10 @@ static void showLog(LogState *state,
         int cc = writev(fileno(stderr), vec, v-vec);
 
         if (cc == totalLen) break;
-
+        
         if (cc < 0) {
             if(errno == EINTR) continue;
-
+            
                 /* can't really log the failure; for now, throw out a stderr */
             fprintf(stderr, "+++ LOG: write failed (errno=%d)\n", errno);
             break;
@@ -679,7 +670,7 @@ static void setRedirects()
     }
 }
 
-LIBLOG_HIDDEN int fakeLogOpen(const char *pathName, int flags)
+int fakeLogOpen(const char *pathName, int flags)
 {
     if (redirectOpen == NULL) {
         setRedirects();
@@ -687,33 +678,19 @@ LIBLOG_HIDDEN int fakeLogOpen(const char *pathName, int flags)
     return redirectOpen(pathName, flags);
 }
 
-/*
- * The logger API has no means or need to 'stop' or 'close' using the logs,
- * and as such, there is no way for that 'stop' or 'close' to translate into
- * a close operation to the fake log handler. fakeLogClose is provided for
- * completeness only.
- *
- * We have no intention of adding a log close operation as it would complicate
- * every user of the logging API with no gain since the only valid place to
- * call is in the exit handler. Logging can continue in the exit handler to
- * help debug HOST tools ...
- */
-LIBLOG_HIDDEN int fakeLogClose(int fd)
+int fakeLogClose(int fd)
 {
     /* Assume that open() was called first. */
     return redirectClose(fd);
 }
 
-LIBLOG_HIDDEN ssize_t fakeLogWritev(int fd,
-                                    const struct iovec* vector, int count)
+ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count)
 {
     /* Assume that open() was called first. */
     return redirectWritev(fd, vector, count);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio,
-                                                const char *tag __unused,
-                                                int def)
+int __android_log_is_loggable(int prio, const char *tag __unused, int def)
 {
     int logLevel = def;
     return logLevel >= 0 && prio >= logLevel;
