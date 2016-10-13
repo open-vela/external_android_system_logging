@@ -482,15 +482,15 @@ static int logdOpen(struct android_log_logger_list *logger_list,
     struct sigaction old_sigaction;
     unsigned int old_alarm = 0;
     char buffer[256], *cp, c;
-    int e, ret, remaining, sock;
+    int e, ret, remaining;
+
+    int sock = transp->context.sock;
+    if (sock > 0) {
+        return sock;
+    }
 
     if (!logger_list) {
         return -EINVAL;
-    }
-
-    sock = atomic_load(&transp->context.sock);
-    if (sock > 0) {
-        return sock;
     }
 
     sock = socket_local_client("logdr",
@@ -587,11 +587,7 @@ static int logdOpen(struct android_log_logger_list *logger_list,
         return ret;
     }
 
-    ret = atomic_exchange(&transp->context.sock, sock);
-    if ((ret > 0) && (ret != sock)) {
-        close(ret);
-    }
-    return sock;
+    return transp->context.sock = sock;
 }
 
 /* Read from the selected logs */
@@ -666,8 +662,8 @@ static int logdPoll(struct android_log_logger_list *logger_list,
 static void logdClose(struct android_log_logger_list *logger_list __unused,
                       struct android_log_transport_context *transp)
 {
-    int sock = atomic_exchange(&transp->context.sock, -1);
-    if (sock > 0) {
-        close (sock);
+    if (transp->context.sock > 0) {
+        close (transp->context.sock);
+        transp->context.sock = -1;
     }
 }

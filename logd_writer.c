@@ -31,6 +31,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <android/log.h>
 #include <cutils/sockets.h>
 #include <log/logger.h>
 #include <private/android_filesystem_config.h>
@@ -64,8 +65,7 @@ static int logdOpen()
 {
     int i, ret = 0;
 
-    i = atomic_load(&logdLoggerWrite.context.sock);
-    if (i < 0) {
+    if (logdLoggerWrite.context.sock < 0) {
         i = TEMP_FAILURE_RETRY(socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
         if (i < 0) {
             ret = -errno;
@@ -80,11 +80,7 @@ static int logdOpen()
                 ret = -errno;
                 close(i);
             } else {
-                ret = atomic_exchange(&logdLoggerWrite.context.sock, i);
-                if ((ret >= 0) && (ret != i)) {
-                    close(ret);
-                }
-                ret = 0;
+                logdLoggerWrite.context.sock = i;
             }
         }
     }
@@ -94,9 +90,9 @@ static int logdOpen()
 
 static void logdClose()
 {
-    int sock = atomic_exchange(&logdLoggerWrite.context.sock, -1);
-    if (sock >= 0) {
-        close(sock);
+    if (logdLoggerWrite.context.sock >= 0) {
+        close(logdLoggerWrite.context.sock);
+        logdLoggerWrite.context.sock = -1;
     }
 }
 
@@ -105,7 +101,7 @@ static int logdAvailable(log_id_t logId)
     if (logId > LOG_ID_SECURITY) {
         return -EINVAL;
     }
-    if (atomic_load(&logdLoggerWrite.context.sock) < 0) {
+    if (logdLoggerWrite.context.sock < 0) {
         if (access("/dev/socket/logdw", W_OK) == 0) {
             return 0;
         }
@@ -125,7 +121,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
     static atomic_int_fast32_t dropped;
     static atomic_int_fast32_t droppedSecurity;
 
-    if (atomic_load(&logdLoggerWrite.context.sock) < 0) {
+    if (logdLoggerWrite.context.sock < 0) {
         return -EBADF;
     }
 
@@ -164,7 +160,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
     newVec[0].iov_base = (unsigned char *)&header;
     newVec[0].iov_len  = sizeof(header);
 
-    if (atomic_load(&logdLoggerWrite.context.sock) > 0) {
+    if (logdLoggerWrite.context.sock > 0) {
         int32_t snapshot = atomic_exchange_explicit(&droppedSecurity, 0,
                                                     memory_order_relaxed);
         if (snapshot) {
@@ -178,8 +174,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
             newVec[headerLength].iov_base = &buffer;
             newVec[headerLength].iov_len  = sizeof(buffer);
 
-            ret = TEMP_FAILURE_RETRY(writev(
-                    atomic_load(&logdLoggerWrite.context.sock), newVec, 2));
+            ret = TEMP_FAILURE_RETRY(writev(logdLoggerWrite.context.sock, newVec, 2));
             if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
                 atomic_fetch_add_explicit(&droppedSecurity, snapshot,
                                           memory_order_relaxed);
@@ -199,8 +194,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
             newVec[headerLength].iov_base = &buffer;
             newVec[headerLength].iov_len  = sizeof(buffer);
 
-            ret = TEMP_FAILURE_RETRY(writev(
-                      atomic_load(&logdLoggerWrite.context.sock), newVec, 2));
+            ret = TEMP_FAILURE_RETRY(writev(logdLoggerWrite.context.sock, newVec, 2));
             if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
                 atomic_fetch_add_explicit(&dropped, snapshot,
                                           memory_order_relaxed);
@@ -229,8 +223,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
      * ENOTCONN occurs if logd dies.
      * EAGAIN occurs if logd is overloaded.
      */
-    ret = TEMP_FAILURE_RETRY(writev(
-            atomic_load(&logdLoggerWrite.context.sock), newVec, i));
+    ret = TEMP_FAILURE_RETRY(writev(logdLoggerWrite.context.sock, newVec, i));
     if (ret < 0) {
         ret = -errno;
         if (ret == -ENOTCONN) {
@@ -243,8 +236,7 @@ static int logdWrite(log_id_t logId, struct timespec *ts,
                 return ret;
             }
 
-            ret = TEMP_FAILURE_RETRY(writev(
-                    atomic_load(&logdLoggerWrite.context.sock), newVec, i));
+            ret = TEMP_FAILURE_RETRY(writev(logdLoggerWrite.context.sock, newVec, i));
             if (ret < 0) {
                 ret = -errno;
             }
