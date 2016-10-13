@@ -17,7 +17,6 @@
 #ifndef _LIBLOG_LOGGER_H__
 #define _LIBLOG_LOGGER_H__
 
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <log/uio.h>
 
@@ -32,10 +31,9 @@ __BEGIN_DECLS
 /* Union, sock or fd of zero is not allowed unless static initialized */
 union android_log_context {
   void *private;
-  atomic_int sock;
-  atomic_int fd;
+  int sock;
+  int fd;
   struct listnode *node;
-  atomic_uintptr_t atomic_pointer;
 };
 
 struct android_log_transport_write {
