@@ -104,7 +104,6 @@ ndk_headers {
     from: "legacy-ndk-includes",
     to: "android",
     srcs: ["legacy-ndk-includes/log.h"],
-    license: "NOTICE",
 }
 
 ndk_library {
