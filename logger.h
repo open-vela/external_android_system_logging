@@ -20,8 +20,9 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 
+#include <android/log.h>
 #include <cutils/list.h>
-#include <log/log.h>
+#include <log/logger.h>
 #include <log/uio.h>
 
 #include "log_portability.h"
