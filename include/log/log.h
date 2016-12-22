@@ -31,8 +31,6 @@
 #include <log/log_id.h>
 #include <log/log_main.h>
 #include <log/log_radio.h>
-#include <log/log_system.h>
-#include <log/log_time.h>
 #include <log/uio.h> /* helper to define iovec for portability */
 
 #ifdef __cplusplus
@@ -76,6 +74,90 @@ extern "C" {
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#endif
+
+/*
+ * Simplified macro to send a verbose system log message using current LOG_TAG.
+ */
+#ifndef SLOGV
+#define __SLOGV(...) \
+    ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__))
+#if LOG_NDEBUG
+#define SLOGV(...) do { if (0) { __SLOGV(__VA_ARGS__); } } while (0)
+#else
+#define SLOGV(...) __SLOGV(__VA_ARGS__)
+#endif
+#endif
+
+#ifndef SLOGV_IF
+#if LOG_NDEBUG
+#define SLOGV_IF(cond, ...)   ((void)0)
+#else
+#define SLOGV_IF(cond, ...) \
+    ( (__predict_false(cond)) \
+    ? ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)) \
+    : (void)0 )
+#endif
+#endif
+
+/*
+ * Simplified macro to send a debug system log message using current LOG_TAG.
+ */
+#ifndef SLOGD
+#define SLOGD(...) \
+    ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__))
+#endif
+
+#ifndef SLOGD_IF
+#define SLOGD_IF(cond, ...) \
+    ( (__predict_false(cond)) \
+    ? ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)) \
+    : (void)0 )
+#endif
+
+/*
+ * Simplified macro to send an info system log message using current LOG_TAG.
+ */
+#ifndef SLOGI
+#define SLOGI(...) \
+    ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__))
+#endif
+
+#ifndef SLOGI_IF
+#define SLOGI_IF(cond, ...) \
+    ( (__predict_false(cond)) \
+    ? ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)) \
+    : (void)0 )
+#endif
+
+/*
+ * Simplified macro to send a warning system log message using current LOG_TAG.
+ */
+#ifndef SLOGW
+#define SLOGW(...) \
+    ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__))
+#endif
+
+#ifndef SLOGW_IF
+#define SLOGW_IF(cond, ...) \
+    ( (__predict_false(cond)) \
+    ? ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)) \
+    : (void)0 )
+#endif
+
+/*
+ * Simplified macro to send an error system log message using current LOG_TAG.
+ */
+#ifndef SLOGE
+#define SLOGE(...) \
+    ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__))
+#endif
+
+#ifndef SLOGE_IF
+#define SLOGE_IF(cond, ...) \
+    ( (__predict_false(cond)) \
+    ? ((void)__android_log_buf_print(LOG_ID_SYSTEM, ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)) \
+    : (void)0 )
 #endif
 
 /* --------------------------------------------------------------------- */
@@ -229,6 +311,177 @@ struct logger_entry_v4 {
     char        msg[0];    /* the entry's payload */
 #endif
 };
+#endif
+
+/* struct log_time is a wire-format variant of struct timespec */
+#define NS_PER_SEC 1000000000ULL
+
+#ifndef __struct_log_time_defined
+#define __struct_log_time_defined
+#ifdef __cplusplus
+
+/*
+ * NB: we did NOT define a copy constructor. This will result in structure
+ * no longer being compatible with pass-by-value which is desired
+ * efficient behavior. Also, pass-by-reference breaks C/C++ ABI.
+ */
+struct log_time {
+public:
+    uint32_t tv_sec; /* good to Feb 5 2106 */
+    uint32_t tv_nsec;
+
+    static const uint32_t tv_sec_max = 0xFFFFFFFFUL;
+    static const uint32_t tv_nsec_max = 999999999UL;
+
+    log_time(const timespec& T)
+    {
+        tv_sec = static_cast<uint32_t>(T.tv_sec);
+        tv_nsec = static_cast<uint32_t>(T.tv_nsec);
+    }
+    log_time(uint32_t sec, uint32_t nsec)
+    {
+        tv_sec = sec;
+        tv_nsec = nsec;
+    }
+#ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
+#define __struct_log_time_private_defined
+    static const timespec EPOCH;
+#endif
+    log_time()
+    {
+    }
+#ifdef __linux__
+    log_time(clockid_t id)
+    {
+        timespec T;
+        clock_gettime(id, &T);
+        tv_sec = static_cast<uint32_t>(T.tv_sec);
+        tv_nsec = static_cast<uint32_t>(T.tv_nsec);
+    }
+#endif
+    log_time(const char* T)
+    {
+        const uint8_t* c = reinterpret_cast<const uint8_t*>(T);
+        tv_sec = c[0] |
+                 (static_cast<uint32_t>(c[1]) << 8) |
+                 (static_cast<uint32_t>(c[2]) << 16) |
+                 (static_cast<uint32_t>(c[3]) << 24);
+        tv_nsec = c[4] |
+                  (static_cast<uint32_t>(c[5]) << 8) |
+                  (static_cast<uint32_t>(c[6]) << 16) |
+                  (static_cast<uint32_t>(c[7]) << 24);
+    }
+
+    /* timespec */
+    bool operator== (const timespec& T) const
+    {
+        return (tv_sec == static_cast<uint32_t>(T.tv_sec))
+            && (tv_nsec == static_cast<uint32_t>(T.tv_nsec));
+    }
+    bool operator!= (const timespec& T) const
+    {
+        return !(*this == T);
+    }
+    bool operator< (const timespec& T) const
+    {
+        return (tv_sec < static_cast<uint32_t>(T.tv_sec))
+            || ((tv_sec == static_cast<uint32_t>(T.tv_sec))
+                && (tv_nsec < static_cast<uint32_t>(T.tv_nsec)));
+    }
+    bool operator>= (const timespec& T) const
+    {
+        return !(*this < T);
+    }
+    bool operator> (const timespec& T) const
+    {
+        return (tv_sec > static_cast<uint32_t>(T.tv_sec))
+            || ((tv_sec == static_cast<uint32_t>(T.tv_sec))
+                && (tv_nsec > static_cast<uint32_t>(T.tv_nsec)));
+    }
+    bool operator<= (const timespec& T) const
+    {
+        return !(*this > T);
+    }
+
+#ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
+    log_time operator-= (const timespec& T);
+    log_time operator- (const timespec& T) const
+    {
+        log_time local(*this);
+        return local -= T;
+    }
+    log_time operator+= (const timespec& T);
+    log_time operator+ (const timespec& T) const
+    {
+        log_time local(*this);
+        return local += T;
+    }
+#endif
+
+    /* log_time */
+    bool operator== (const log_time& T) const
+    {
+        return (tv_sec == T.tv_sec) && (tv_nsec == T.tv_nsec);
+    }
+    bool operator!= (const log_time& T) const
+    {
+        return !(*this == T);
+    }
+    bool operator< (const log_time& T) const
+    {
+        return (tv_sec < T.tv_sec)
+            || ((tv_sec == T.tv_sec) && (tv_nsec < T.tv_nsec));
+    }
+    bool operator>= (const log_time& T) const
+    {
+        return !(*this < T);
+    }
+    bool operator> (const log_time& T) const
+    {
+        return (tv_sec > T.tv_sec)
+            || ((tv_sec == T.tv_sec) && (tv_nsec > T.tv_nsec));
+    }
+    bool operator<= (const log_time& T) const
+    {
+        return !(*this > T);
+    }
+
+#ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
+    log_time operator-= (const log_time& T);
+    log_time operator- (const log_time& T) const
+    {
+        log_time local(*this);
+        return local -= T;
+    }
+    log_time operator+= (const log_time& T);
+    log_time operator+ (const log_time& T) const
+    {
+        log_time local(*this);
+        return local += T;
+    }
+#endif
+
+    uint64_t nsec() const
+    {
+        return static_cast<uint64_t>(tv_sec) * NS_PER_SEC + tv_nsec;
+    }
+
+#ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
+    static const char default_format[];
+
+    /* Add %#q for the fraction of a second to the standard library functions */
+    char* strptime(const char* s, const char* format = default_format);
+#endif
+} __attribute__((__packed__));
+
+#else
+
+typedef struct log_time {
+    uint32_t tv_sec;
+    uint32_t tv_nsec;
+} __attribute__((__packed__)) log_time;
+
+#endif
 #endif
 
 /*
