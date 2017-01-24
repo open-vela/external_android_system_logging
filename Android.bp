@@ -57,7 +57,7 @@ cc_library {
             srcs: liblog_target_sources,
             // AddressSanitizer runtime library depends on liblog.
             sanitize: {
-                address: false,
+                never: true,
             },
         },
         android_arm: {
