@@ -285,7 +285,6 @@ LIBLOG_ABI_PRIVATE ssize_t __android_log_pmsg_file_write(
                 __android_log_unlock();
             } else if (pmsgOpen() < 0) {
                 __android_log_unlock();
-                free(cp);
                 return -EBADF;
             }
         }
