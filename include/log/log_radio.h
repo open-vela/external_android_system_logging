@@ -38,10 +38,6 @@
 
 /* --------------------------------------------------------------------- */
 
-#ifndef __predict_false
-#define __predict_false(exp) __builtin_expect((exp) != 0, 0)
-#endif
-
 /*
  * Simplified macro to send a verbose radio log message using current LOG_TAG.
  */
