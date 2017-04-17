@@ -31,6 +31,7 @@
 #include <unordered_map>
 
 #include <log/event_tag_map.h>
+#include <log/log_properties.h>
 #include <private/android_logger.h>
 #include <utils/FastStrcmp.h>
 #include <utils/RWLock.h>
@@ -229,16 +230,9 @@ int EventTagMap::find(MapString&& tag) const {
   return it->second;
 }
 
-// The position after the end of a valid section of the tag string,
-// caller makes sure delimited appropriately.
-static const char* endOfTag(const char* cp) {
-  while (*cp && (isalnum(*cp) || strchr("_.-@,", *cp))) ++cp;
-  return cp;
-}
-
 // Scan one tag line.
 //
-// "pData" should be pointing to the first digit in the tag number.  On
+// "*pData" should be pointing to the first digit in the tag number.  On
 // successful return, it will be pointing to the last character in the
 // tag line (i.e. the character before the start of the next line).
 //
@@ -248,11 +242,10 @@ static const char* endOfTag(const char* cp) {
 // data and it will outlive the call.
 //
 // Returns 0 on success, nonzero on failure.
-static int scanTagLine(EventTagMap* map, const char*& pData, int lineNum) {
-  char* ep;
-  unsigned long val = strtoul(pData, &ep, 10);
-  const char* cp = ep;
-  if (cp == pData) {
+static int scanTagLine(EventTagMap* map, char** pData, int lineNum) {
+  char* cp;
+  unsigned long val = strtoul(*pData, &cp, 10);
+  if (cp == *pData) {
     if (lineNum) {
       fprintf(stderr, OUT_TAG ": malformed tag number on line %d\n", lineNum);
     }
@@ -281,13 +274,14 @@ static int scanTagLine(EventTagMap* map, const char*& pData, int lineNum) {
   }
 
   const char* tag = cp;
-  cp = endOfTag(cp);
+  // Determine whether "c" is a valid tag char.
+  while (isalnum(*++cp) || (*cp == '_')) {
+  }
   size_t tagLen = cp - tag;
 
   if (!isspace(*cp)) {
     if (lineNum) {
-      fprintf(stderr, OUT_TAG ": invalid tag char %c on line %d\n", *cp,
-              lineNum);
+      fprintf(stderr, OUT_TAG ": invalid tag chars on line %d\n", lineNum);
     }
     errno = EINVAL;
     return -1;
@@ -318,9 +312,9 @@ static int scanTagLine(EventTagMap* map, const char*& pData, int lineNum) {
 
   while (*cp != '\n') ++cp;
 #ifdef DEBUG
-  fprintf(stderr, "%d: %p: %.*s\n", lineNum, tag, (int)(cp - pData), pData);
+  fprintf(stderr, "%d: %p: %.*s\n", lineNum, tag, (int)(cp - *pData), *pData);
 #endif
-  pData = cp;
+  *pData = cp;
 
   if (lineNum) {
     if (map->emplaceUnique(tagIndex,
@@ -348,9 +342,9 @@ static const char* eventTagFiles[NUM_MAPS] = {
 
 // Parse the tags out of the file.
 static int parseMapLines(EventTagMap* map, size_t which) {
-  const char* cp = static_cast<char*>(map->mapAddr[which]);
+  char* cp = static_cast<char*>(map->mapAddr[which]);
   size_t len = map->mapLen[which];
-  const char* endp = cp + len;
+  char* endp = cp + len;
 
   // insist on EOL at EOF; simplifies parsing and null-termination
   if (!len || (*(endp - 1) != '\n')) {
@@ -377,7 +371,7 @@ static int parseMapLines(EventTagMap* map, size_t which) {
         lineStart = false;
       } else if (isdigit(*cp)) {
         // looks like a tag; scan it out
-        if (scanTagLine(map, cp, lineNum) != 0) {
+        if (scanTagLine(map, &cp, lineNum) != 0) {
           if (!which || (errno != EMLINK)) {
             return -1;
           }
@@ -452,7 +446,7 @@ LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName) {
           mmap(NULL, end[which], which ? PROT_READ : PROT_READ | PROT_WRITE,
                which ? MAP_SHARED : MAP_PRIVATE, fd[which], 0);
       save_errno = errno;
-      close(fd[which]); /* fd DONE */
+      close(fd[which]);
       fd[which] = -1;
       if ((newTagMap->mapAddr[which] != MAP_FAILED) &&
           (newTagMap->mapAddr[which] != NULL)) {
@@ -472,7 +466,6 @@ LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName) {
       delete newTagMap;
       return NULL;
     }
-    /* See 'fd DONE' comments above and below, no need to clean up here */
   }
 
   return newTagMap;
@@ -481,7 +474,7 @@ fail_unmap:
   save_errno = EINVAL;
   delete newTagMap;
 fail_close:
-  for (which = 0; which < NUM_MAPS; ++which) close(fd[which]); /* fd DONE */
+  for (which = 0; which < NUM_MAPS; ++which) close(fd[which]);
 fail_errno:
   errno = save_errno;
   return NULL;
@@ -502,13 +495,14 @@ static const TagFmt* __getEventTag(EventTagMap* map, unsigned int tag) {
   int ret = asprintf(&buf, command_template, tag);
   if (ret > 0) {
     // Add some buffer margin for an estimate of the full return content.
+    char* cp;
     size_t size =
         ret - strlen(command_template) +
         strlen("65535\n4294967295\t?\t\t\t?\t# uid=32767\n\n\f?success?");
     if (size > (size_t)ret) {
-      char* np = static_cast<char*>(realloc(buf, size));
-      if (np) {
-        buf = np;
+      cp = static_cast<char*>(realloc(buf, size));
+      if (cp) {
+        buf = cp;
       } else {
         size = ret;
       }
@@ -518,12 +512,10 @@ static const TagFmt* __getEventTag(EventTagMap* map, unsigned int tag) {
     // Ask event log tag service for an existing entry
     if (__send_log_msg(buf, size) >= 0) {
       buf[size - 1] = '\0';
-      char* ep;
-      unsigned long val = strtoul(buf, &ep, 10);  // return size
-      const char* cp = ep;
+      unsigned long val = strtoul(buf, &cp, 10);        // return size
       if ((buf != cp) && (val > 0) && (*cp == '\n')) {  // truncation OK
         ++cp;
-        if (!scanTagLine(map, cp, 0)) {
+        if (!scanTagLine(map, &cp, 0)) {
           free(buf);
           return map->find(tag);
         }
@@ -581,9 +573,8 @@ LIBLOG_ABI_PUBLIC const char* android_lookupEventTag(const EventTagMap* map,
 LIBLOG_ABI_PUBLIC int android_lookupEventTagNum(EventTagMap* map,
                                                 const char* tagname,
                                                 const char* format, int prio) {
-  const char* ep = endOfTag(tagname);
-  size_t len = ep - tagname;
-  if (!len || *ep) {
+  size_t len = strlen(tagname);
+  if (!len) {
     errno = EINVAL;
     return -1;
   }
