@@ -22,8 +22,6 @@
 
 /* struct log_time is a wire-format variant of struct timespec */
 #define NS_PER_SEC 1000000000ULL
-#define US_PER_SEC 1000000ULL
-#define MS_PER_SEC 1000ULL
 
 #ifndef __struct_log_time_defined
 #define __struct_log_time_defined
@@ -43,13 +41,12 @@ struct log_time {
   static const uint32_t tv_sec_max = 0xFFFFFFFFUL;
   static const uint32_t tv_nsec_max = 999999999UL;
 
-  log_time(const timespec& T) {
-    tv_sec = static_cast<uint32_t>(T.tv_sec);
-    tv_nsec = static_cast<uint32_t>(T.tv_nsec);
+  log_time(const timespec& T)
+      : tv_sec(static_cast<uint32_t>(T.tv_sec)),
+        tv_nsec(static_cast<uint32_t>(T.tv_nsec)) {
   }
-  log_time(uint32_t sec, uint32_t nsec) {
-    tv_sec = sec;
-    tv_nsec = nsec;
+  explicit log_time(uint32_t sec, uint32_t nsec = 0)
+      : tv_sec(sec), tv_nsec(nsec) {
   }
 #ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
 #define __struct_log_time_private_defined
@@ -58,14 +55,14 @@ struct log_time {
   log_time() {
   }
 #ifdef __linux__
-  log_time(clockid_t id) {
+  explicit log_time(clockid_t id) {
     timespec T;
     clock_gettime(id, &T);
     tv_sec = static_cast<uint32_t>(T.tv_sec);
     tv_nsec = static_cast<uint32_t>(T.tv_nsec);
   }
 #endif
-  log_time(const char* T) {
+  explicit log_time(const char* T) {
     const uint8_t* c = reinterpret_cast<const uint8_t*>(T);
     tv_sec = c[0] | (static_cast<uint32_t>(c[1]) << 8) |
              (static_cast<uint32_t>(c[2]) << 16) |
@@ -150,14 +147,6 @@ struct log_time {
 
   uint64_t nsec() const {
     return static_cast<uint64_t>(tv_sec) * NS_PER_SEC + tv_nsec;
-  }
-  uint64_t usec() const {
-    return static_cast<uint64_t>(tv_sec) * US_PER_SEC +
-           tv_nsec / (NS_PER_SEC / US_PER_SEC);
-  }
-  uint64_t msec() const {
-    return static_cast<uint64_t>(tv_sec) * MS_PER_SEC +
-           tv_nsec / (NS_PER_SEC / MS_PER_SEC);
   }
 
 #ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
