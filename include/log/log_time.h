@@ -28,10 +28,6 @@
 #ifndef __struct_log_time_defined
 #define __struct_log_time_defined
 
-#define LOG_TIME_SEC(t) ((t)->tv_sec)
-/* next power of two after NS_PER_SEC */
-#define LOG_TIME_NSEC(t) ((t)->tv_nsec & (UINT32_MAX >> 2))
-
 #ifdef __cplusplus
 
 /*
@@ -171,15 +167,15 @@ struct log_time {
 #endif
 } __attribute__((__packed__));
 
-#else /* __cplusplus */
+#else
 
 typedef struct log_time {
   uint32_t tv_sec;
   uint32_t tv_nsec;
 } __attribute__((__packed__)) log_time;
 
-#endif /* __cplusplus */
+#endif
 
-#endif /* __struct_log_time_defined */
+#endif
 
 #endif /* _LIBS_LOG_LOG_TIME_H */
