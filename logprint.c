@@ -1632,10 +1632,8 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format,
     prefixLen = snprintf(prefixBuf, sizeof(prefixBuf), "\x1B[38;5;%dm",
                          colorFromPri(entry->priority));
     prefixLen = MIN(prefixLen, sizeof(prefixBuf));
-
-    const char suffixContents[] = "\x1B[0m";
-    strcpy(suffixBuf, suffixContents);
-    suffixLen = strlen(suffixContents);
+    suffixLen = snprintf(suffixBuf, sizeof(suffixBuf), "\x1B[0m");
+    suffixLen = MIN(suffixLen, sizeof(suffixBuf));
   }
 
   char uid[16];
