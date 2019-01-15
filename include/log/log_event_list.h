@@ -20,8 +20,10 @@
 #include <errno.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
+#if (defined(__cplusplus) && defined(_USING_LIBCXX))
+extern "C++" {
 #include <string>
+}
 #endif
 
 #include <log/log.h>
@@ -194,12 +196,14 @@ class android_log_event_list {
     return *this;
   }
 
+#if defined(_USING_LIBCXX)
   android_log_event_list& operator<<(const std::string& value) {
     int retval =
         android_log_write_string8_len(ctx, value.data(), value.length());
     if (retval < 0) ret = retval;
     return *this;
   }
+#endif
 
   android_log_event_list& operator<<(float value) {
     int retval = android_log_write_float32(ctx, value);
@@ -253,6 +257,7 @@ class android_log_event_list {
     return ret >= 0;
   }
 
+#if defined(_USING_LIBCXX)
   bool AppendString(const std::string& value) {
     int retval =
         android_log_write_string8_len(ctx, value.data(), value.length());
@@ -266,6 +271,7 @@ class android_log_event_list {
     if (retval < 0) ret = retval;
     return ret;
   }
+#endif
 
   bool AppendFloat(float value) {
     int retval = android_log_write_float32(ctx, value);
