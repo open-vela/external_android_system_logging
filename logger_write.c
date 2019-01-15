@@ -37,14 +37,19 @@
 #define LOG_BUF_SIZE 1024
 
 static int __write_to_log_init(log_id_t, struct iovec* vec, size_t nr);
-static int (*write_to_log)(log_id_t, struct iovec* vec, size_t nr) = __write_to_log_init;
+static int (*write_to_log)(log_id_t, struct iovec* vec,
+                           size_t nr) = __write_to_log_init;
 
 /*
  * This is used by the C++ code to decide if it should write logs through
  * the C code.  Basically, if /dev/socket/logd is available, we're running in
  * the simulator rather than a desktop tool and want to use the device.
  */
-static enum { kLogUninitialized, kLogNotAvailable, kLogAvailable } g_log_status = kLogUninitialized;
+static enum {
+  kLogUninitialized,
+  kLogNotAvailable,
+  kLogAvailable
+} g_log_status = kLogUninitialized;
 
 static int check_log_uid_permissions() {
 #if defined(__ANDROID__)
@@ -65,7 +70,7 @@ static int check_log_uid_permissions() {
           if (num_groups <= 0) {
             return -EPERM;
           }
-          groups = static_cast<gid_t*>(calloc(num_groups, sizeof(gid_t)));
+          groups = calloc(num_groups, sizeof(gid_t));
           if (!groups) {
             return -ENOMEM;
           }
@@ -88,8 +93,9 @@ static int check_log_uid_permissions() {
   return 0;
 }
 
-static void __android_log_cache_available(struct android_log_transport_write* node) {
-  uint32_t i;
+static void __android_log_cache_available(
+    struct android_log_transport_write* node) {
+  size_t i;
 
   if (node->logMask) {
     return;
@@ -98,13 +104,13 @@ static void __android_log_cache_available(struct android_log_transport_write* no
   for (i = LOG_ID_MIN; i < LOG_ID_MAX; ++i) {
     if (node->write && (i != LOG_ID_KERNEL) &&
         ((i != LOG_ID_SECURITY) || (check_log_uid_permissions() == 0)) &&
-        (!node->available || ((*node->available)(static_cast<log_id_t>(i)) >= 0))) {
+        (!node->available || ((*node->available)(i) >= 0))) {
       node->logMask |= 1 << i;
     }
   }
 }
 
-LIBLOG_ABI_PUBLIC extern "C" int __android_log_dev_available() {
+LIBLOG_ABI_PUBLIC int __android_log_dev_available() {
   struct android_log_transport_write* node;
 
   if (list_empty(&__android_log_transport_write)) {
@@ -302,9 +308,10 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec* vec, size_t nr) 
       }
     }
     if (m && (m != (EventTagMap*)(uintptr_t)-1LL)) {
-      tag = android_lookupEventTag_len(m, &len, get4LE(static_cast<uint8_t*>(vec[0].iov_base)));
+      tag = android_lookupEventTag_len(m, &len, get4LE(vec[0].iov_base));
     }
-    ret = __android_log_is_loggable_len(ANDROID_LOG_INFO, tag, len, ANDROID_LOG_VERBOSE);
+    ret = __android_log_is_loggable_len(ANDROID_LOG_INFO, tag, len,
+                                        ANDROID_LOG_VERBOSE);
     if (f) { /* local copy marked for close */
       android_closeEventTagMap(f);
     }
@@ -315,7 +322,7 @@ static int __write_to_log_daemon(log_id_t log_id, struct iovec* vec, size_t nr) 
   } else {
     /* Validate the incoming tag, tag content can not split across iovec */
     char prio = ANDROID_LOG_VERBOSE;
-    const char* tag = static_cast<const char*>(vec[0].iov_base);
+    const char* tag = vec[0].iov_base;
     size_t len = vec[0].iov_len;
     if (!tag) {
       len = 0;
@@ -401,12 +408,13 @@ static int __write_to_log_init(log_id_t log_id, struct iovec* vec, size_t nr) {
   return ret;
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_write(int prio, const char* tag, const char* msg) {
+LIBLOG_ABI_PUBLIC int __android_log_write(int prio, const char* tag,
+                                          const char* msg) {
   return __android_log_buf_write(LOG_ID_MAIN, prio, tag, msg);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio, const char* tag,
-                                              const char* msg) {
+LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
+                                              const char* tag, const char* msg) {
   struct iovec vec[3];
   char tmp_tag[32];
 
@@ -449,7 +457,7 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio, const char* t
         bufID = LOG_ID_RADIO;
         snprintf(tmp_tag, sizeof(tmp_tag), "use-Rlog/RLOG-%s", tag);
         tag = tmp_tag;
-        [[fallthrough]];
+      /* FALLTHRU */
       default:
         break;
     }
@@ -468,10 +476,11 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio, const char* t
   vec[2].iov_base = (void*)msg;
   vec[2].iov_len = strlen(msg) + 1;
 
-  return write_to_log(static_cast<log_id_t>(bufID), vec, 3);
+  return write_to_log(bufID, vec, 3);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap) {
+LIBLOG_ABI_PUBLIC int __android_log_vprint(int prio, const char* tag,
+                                           const char* fmt, va_list ap) {
   char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -479,7 +488,8 @@ LIBLOG_ABI_PUBLIC int __android_log_vprint(int prio, const char* tag, const char
   return __android_log_write(prio, tag, buf);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
+LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag,
+                                          const char* fmt, ...) {
   va_list ap;
   char buf[LOG_BUF_SIZE];
 
@@ -490,7 +500,8 @@ LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag, const char*
   return __android_log_write(prio, tag, buf);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fmt,
+LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio,
+                                              const char* tag, const char* fmt,
                                               ...) {
   va_list ap;
   char buf[LOG_BUF_SIZE];
@@ -502,8 +513,8 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio, const char* t
   return __android_log_buf_write(bufID, prio, tag, buf);
 }
 
-LIBLOG_ABI_PUBLIC void __android_log_assert(const char* cond, const char* tag, const char* fmt,
-                                            ...) {
+LIBLOG_ABI_PUBLIC void __android_log_assert(const char* cond, const char* tag,
+                                            const char* fmt, ...) {
   char buf[LOG_BUF_SIZE];
 
   if (fmt) {
@@ -525,8 +536,7 @@ LIBLOG_ABI_PUBLIC void __android_log_assert(const char* cond, const char* tag, c
   // Log assertion failures to stderr for the benefit of "adb shell" users
   // and gtests (http://b/23675822).
   struct iovec iov[2] = {
-      {buf, strlen(buf)},
-      {(char*)"\n", 1},
+    { buf, strlen(buf) }, { (char*)"\n", 1 },
   };
   TEMP_FAILURE_RETRY(writev(2, iov, 2));
 
@@ -535,7 +545,8 @@ LIBLOG_ABI_PUBLIC void __android_log_assert(const char* cond, const char* tag, c
            /* NOTREACHED */
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_bwrite(int32_t tag, const void* payload, size_t len) {
+LIBLOG_ABI_PUBLIC int __android_log_bwrite(int32_t tag, const void* payload,
+                                           size_t len) {
   struct iovec vec[2];
 
   vec[0].iov_base = &tag;
@@ -546,7 +557,9 @@ LIBLOG_ABI_PUBLIC int __android_log_bwrite(int32_t tag, const void* payload, siz
   return write_to_log(LOG_ID_EVENTS, vec, 2);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_stats_bwrite(int32_t tag, const void* payload, size_t len) {
+LIBLOG_ABI_PUBLIC int __android_log_stats_bwrite(int32_t tag,
+                                                 const void* payload,
+                                                 size_t len) {
   struct iovec vec[2];
 
   vec[0].iov_base = &tag;
@@ -557,7 +570,9 @@ LIBLOG_ABI_PUBLIC int __android_log_stats_bwrite(int32_t tag, const void* payloa
   return write_to_log(LOG_ID_STATS, vec, 2);
 }
 
-LIBLOG_ABI_PUBLIC int __android_log_security_bwrite(int32_t tag, const void* payload, size_t len) {
+LIBLOG_ABI_PUBLIC int __android_log_security_bwrite(int32_t tag,
+                                                    const void* payload,
+                                                    size_t len) {
   struct iovec vec[2];
 
   vec[0].iov_base = &tag;
@@ -573,8 +588,8 @@ LIBLOG_ABI_PUBLIC int __android_log_security_bwrite(int32_t tag, const void* pay
  * for the general case where we're generating lists of stuff, but very
  * handy if we just want to dump an integer into the log.
  */
-LIBLOG_ABI_PUBLIC int __android_log_btwrite(int32_t tag, char type, const void* payload,
-                                            size_t len) {
+LIBLOG_ABI_PUBLIC int __android_log_btwrite(int32_t tag, char type,
+                                            const void* payload, size_t len) {
   struct iovec vec[3];
 
   vec[0].iov_base = &tag;
@@ -612,7 +627,8 @@ LIBLOG_ABI_PUBLIC int __android_log_bswrite(int32_t tag, const char* payload) {
  * Like __android_log_security_bwrite, but used for writing strings to the
  * security log.
  */
-LIBLOG_ABI_PUBLIC int __android_log_security_bswrite(int32_t tag, const char* payload) {
+LIBLOG_ABI_PUBLIC int __android_log_security_bswrite(int32_t tag,
+                                                     const char* payload) {
   struct iovec vec[4];
   char type = EVENT_TYPE_STRING;
   uint32_t len = strlen(payload);
@@ -679,7 +695,8 @@ LIBLOG_ABI_PUBLIC int android_set_log_transport(int transport_flag) {
 
     write_to_log = __write_to_log_init;
     /* generically we only expect these two values for write_to_log */
-  } else if ((write_to_log != __write_to_log_init) && (write_to_log != __write_to_log_daemon)) {
+  } else if ((write_to_log != __write_to_log_init) &&
+             (write_to_log != __write_to_log_daemon)) {
     write_to_log = __write_to_log_init;
   }
 
@@ -699,7 +716,8 @@ LIBLOG_ABI_PUBLIC int android_get_log_transport() {
   } else {
     __android_log_transport &= LOGGER_LOGD | LOGGER_STDERR;
     ret = __android_log_transport;
-    if ((write_to_log != __write_to_log_init) && (write_to_log != __write_to_log_daemon)) {
+    if ((write_to_log != __write_to_log_init) &&
+        (write_to_log != __write_to_log_daemon)) {
       ret = -EINVAL;
     }
   }

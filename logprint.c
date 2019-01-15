@@ -15,6 +15,7 @@
 ** limitations under the License.
 */
 
+#define _GNU_SOURCE /* for asprintf */
 #ifndef __MINGW32__
 #define HAVE_STRSEP
 #endif
@@ -153,7 +154,7 @@ static char filterPriToChar(android_LogPriority pri) {
     case ANDROID_LOG_DEFAULT:
     case ANDROID_LOG_UNKNOWN:
     default:                  return '?';
-      /* clang-format on */
+    /* clang-format on */
   }
 }
 
@@ -171,14 +172,16 @@ static int colorFromPri(android_LogPriority pri) {
     case ANDROID_LOG_DEFAULT:
     case ANDROID_LOG_UNKNOWN:
     default:                  return ANDROID_COLOR_DEFAULT;
-      /* clang-format on */
+    /* clang-format on */
   }
 }
 
-static android_LogPriority filterPriForTag(AndroidLogFormat* p_format, const char* tag) {
+static android_LogPriority filterPriForTag(AndroidLogFormat* p_format,
+                                           const char* tag) {
   FilterInfo* p_curFilter;
 
-  for (p_curFilter = p_format->filters; p_curFilter != NULL; p_curFilter = p_curFilter->p_next) {
+  for (p_curFilter = p_format->filters; p_curFilter != NULL;
+       p_curFilter = p_curFilter->p_next) {
     if (0 == strcmp(tag, p_curFilter->mTag)) {
       if (p_curFilter->mPri == ANDROID_LOG_DEFAULT) {
         return p_format->global_pri;
@@ -195,7 +198,8 @@ static android_LogPriority filterPriForTag(AndroidLogFormat* p_format, const cha
  * returns 1 if this log line should be printed based on its priority
  * and tag, and 0 if it should not
  */
-LIBLOG_ABI_PUBLIC int android_log_shouldPrintLine(AndroidLogFormat* p_format, const char* tag,
+LIBLOG_ABI_PUBLIC int android_log_shouldPrintLine(AndroidLogFormat* p_format,
+                                                  const char* tag,
                                                   android_LogPriority pri) {
   return pri >= filterPriForTag(p_format, tag);
 }
@@ -203,7 +207,7 @@ LIBLOG_ABI_PUBLIC int android_log_shouldPrintLine(AndroidLogFormat* p_format, co
 LIBLOG_ABI_PUBLIC AndroidLogFormat* android_log_format_new() {
   AndroidLogFormat* p_ret;
 
-  p_ret = static_cast<AndroidLogFormat*>(calloc(1, sizeof(AndroidLogFormat)));
+  p_ret = calloc(1, sizeof(AndroidLogFormat));
 
   p_ret->global_pri = ANDROID_LOG_VERBOSE;
   p_ret->format = FORMAT_BRIEF;
@@ -298,7 +302,8 @@ static const char utc[] = "UTC";
 /**
  * Returns FORMAT_OFF on invalid string
  */
-LIBLOG_ABI_PUBLIC AndroidLogPrintFormat android_log_formatFromString(const char* formatString) {
+LIBLOG_ABI_PUBLIC AndroidLogPrintFormat
+android_log_formatFromString(const char* formatString) {
   static AndroidLogPrintFormat format;
 
   /* clang-format off */
@@ -321,7 +326,7 @@ LIBLOG_ABI_PUBLIC AndroidLogPrintFormat android_log_formatFromString(const char*
   else if (!strcmp(formatString, "monotonic")) format = FORMAT_MODIFIER_MONOTONIC;
   else if (!strcmp(formatString, "uid")) format = FORMAT_MODIFIER_UID;
   else if (!strcmp(formatString, "descriptive")) format = FORMAT_MODIFIER_DESCRIPT;
-    /* clang-format on */
+  /* clang-format on */
 
 #ifndef __MINGW32__
   else {
@@ -339,8 +344,9 @@ LIBLOG_ABI_PUBLIC AndroidLogPrintFormat android_log_formatFromString(const char*
      */
     tzset();
     if (!tzname[0] ||
-        ((!strcmp(tzname[0], utc) || !strcmp(tzname[0], gmt))                  /* error? */
-         && strcasecmp(formatString, utc) && strcasecmp(formatString, gmt))) { /* ok */
+        ((!strcmp(tzname[0], utc) || !strcmp(tzname[0], gmt)) /* error? */
+         && strcasecmp(formatString, utc) &&
+         strcasecmp(formatString, gmt))) { /* ok */
       if (cp) {
         setenv(tz, cp, 1);
       } else {
@@ -575,7 +581,7 @@ LIBLOG_ABI_PUBLIC int android_log_processLogBuffer(struct logger_entry* buf,
     msg[msgEnd] = '\0';
   }
 
-  entry->priority = static_cast<android_LogPriority>(msg[0]);
+  entry->priority = msg[0];
   entry->tag = msg + 1;
   entry->tagLen = msgStart - 1;
   entry->message = msg + msgStart;
@@ -637,8 +643,9 @@ enum objectType {
   TYPE_MONOTONIC = 's'
 };
 
-static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t* pEventDataLen,
-                                        char** pOutBuf, size_t* pOutBufLen, const char** fmtStr,
+static int android_log_printBinaryEvent(const unsigned char** pEventData,
+                                        size_t* pEventDataLen, char** pOutBuf,
+                                        size_t* pOutBufLen, const char** fmtStr,
                                         size_t* fmtLen) {
   const unsigned char* eventData = *pEventData;
   size_t eventDataLen = *pEventDataLen;
@@ -722,10 +729,13 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
     }
 
     if (findChar(&cp, &len, '|') && findChar(&cp, &len, INT_MAX)) {
-      static const unsigned char typeTable[] = {EVENT_TYPE_INT, EVENT_TYPE_LONG, EVENT_TYPE_STRING,
-                                                EVENT_TYPE_LIST, EVENT_TYPE_FLOAT};
+      static const unsigned char typeTable[] = {
+        EVENT_TYPE_INT, EVENT_TYPE_LONG, EVENT_TYPE_STRING, EVENT_TYPE_LIST,
+        EVENT_TYPE_FLOAT
+      };
 
-      if ((*cp >= '1') && (*cp < (char)('1' + (sizeof(typeTable) / sizeof(typeTable[0])))) &&
+      if ((*cp >= '1') &&
+          (*cp < (char)('1' + (sizeof(typeTable) / sizeof(typeTable[0])))) &&
           (type != typeTable[(size_t)(*cp - '1')]))
         len = 0;
 
@@ -848,8 +858,8 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
         outBufLen--;
 
         for (i = 0; i < count; i++) {
-          result = android_log_printBinaryEvent(&eventData, &eventDataLen, &outBuf, &outBufLen,
-                                                fmtStr, fmtLen);
+          result = android_log_printBinaryEvent(
+              &eventData, &eventDataLen, &outBuf, &outBufLen, fmtStr, fmtLen);
           if (result != 0) goto bail;
 
           if (i < (count - 1)) {
@@ -879,21 +889,24 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
         case TYPE_BYTES:
           if ((lval != 0) && ((lval % 1024) == 0)) {
             /* repaint with multiplier */
-            static const char suffixTable[] = {'K', 'M', 'G', 'T'};
+            static const char suffixTable[] = { 'K', 'M', 'G', 'T' };
             size_t idx = 0;
             outBuf -= outCount;
             outBufLen += outCount;
             do {
               lval /= 1024;
               if ((lval % 1024) != 0) break;
-            } while (++idx < ((sizeof(suffixTable) / sizeof(suffixTable[0])) - 1));
-            outCount = snprintf(outBuf, outBufLen, "%" PRId64 "%cB", lval, suffixTable[idx]);
+            } while (++idx <
+                     ((sizeof(suffixTable) / sizeof(suffixTable[0])) - 1));
+            outCount = snprintf(outBuf, outBufLen, "%" PRId64 "%cB", lval,
+                                suffixTable[idx]);
           } else {
             outCount = snprintf(outBuf, outBufLen, "B");
           }
           break;
         case TYPE_MILLISECONDS:
-          if (((lval <= -1000) || (1000 <= lval)) && (outBufLen || (outBuf[-1] == '0'))) {
+          if (((lval <= -1000) || (1000 <= lval)) &&
+              (outBufLen || (outBuf[-1] == '0'))) {
             /* repaint as (fractional) seconds, possibly saving space */
             if (outBufLen) outBuf[0] = outBuf[-1];
             outBuf[-1] = outBuf[-2];
@@ -930,19 +943,22 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
           }
           if (val >= minute) {
             if (val >= hour) {
-              outCount = snprintf(outBuf, outBufLen, "%" PRIu64 ":", (val / hour) % (day / hour));
+              outCount = snprintf(outBuf, outBufLen, "%" PRIu64 ":",
+                                  (val / hour) % (day / hour));
               if (outCount >= outBufLen) break;
               outBuf += outCount;
               outBufLen -= outCount;
             }
             outCount =
-                snprintf(outBuf, outBufLen, (val >= hour) ? "%02" PRIu64 ":" : "%" PRIu64 ":",
+                snprintf(outBuf, outBufLen,
+                         (val >= hour) ? "%02" PRIu64 ":" : "%" PRIu64 ":",
                          (val / minute) % (hour / minute));
             if (outCount >= outBufLen) break;
             outBuf += outCount;
             outBufLen -= outCount;
           }
-          outCount = snprintf(outBuf, outBufLen, (val >= minute) ? "%02" PRIu64 : "%" PRIu64 "s",
+          outCount = snprintf(outBuf, outBufLen,
+                              (val >= minute) ? "%02" PRIu64 : "%" PRIu64 "s",
                               val % minute);
         } break;
         case TYPE_ALLOCATIONS:
@@ -999,7 +1015,7 @@ no_room:
  */
 LIBLOG_ABI_PUBLIC int android_log_processBinaryLogBuffer(
     struct logger_entry* buf, AndroidLogEntry* entry,
-    [[maybe_unused]] const EventTagMap* map, /* only on !__ANDROID__ */
+    const EventTagMap* map __unused, /* only on !__ANDROID__ */
     char* messageBuf, int messageBufLen) {
   size_t inCount;
   uint32_t tagIndex;
@@ -1084,8 +1100,8 @@ LIBLOG_ABI_PUBLIC int android_log_processBinaryLogBuffer(
   int result = 0;
 
   if ((inCount > 0) || fmtLen) {
-    result = android_log_printBinaryEvent(&eventData, &inCount, &outBuf, &outRemaining, &fmtStr,
-                                          &fmtLen);
+    result = android_log_printBinaryEvent(&eventData, &inCount, &outBuf,
+                                          &outRemaining, &fmtStr, &fmtLen);
   }
   if ((result == 1) && fmtStr) {
     /* We overflowed :-(, let's repaint the line w/o format dressings */
@@ -1096,7 +1112,8 @@ LIBLOG_ABI_PUBLIC int android_log_processBinaryLogBuffer(
     eventData += 4;
     outBuf = messageBuf;
     outRemaining = messageBufLen - 1;
-    result = android_log_printBinaryEvent(&eventData, &inCount, &outBuf, &outRemaining, NULL, NULL);
+    result = android_log_printBinaryEvent(&eventData, &inCount, &outBuf,
+                                          &outRemaining, NULL, NULL);
   }
   if (result < 0) {
     fprintf(stderr, "Binary log entry conversion failed\n");
@@ -1170,7 +1187,8 @@ LIBLOG_WEAK ssize_t utf8_character_length(const char* src, size_t len) {
   }
 
   for (utf32 = 1, num_to_read = 1, mask = 0x40, to_ignore_mask = 0x80;
-       num_to_read < 5 && (first_char & mask); num_to_read++, to_ignore_mask |= mask, mask >>= 1) {
+       num_to_read < 5 && (first_char & mask);
+       num_to_read++, to_ignore_mask |= mask, mask >>= 1) {
     if (num_to_read > len) {
       return -1;
     }
@@ -1208,7 +1226,8 @@ static size_t convertPrintable(char* p, const char* message, size_t messageLen) 
     len = utf8_character_length(message, len);
 
     if (len < 0) {
-      snprintf(buf, sizeof(buf), ((messageLen > 1) && isdigit(message[1])) ? "\\%03o" : "\\%o",
+      snprintf(buf, sizeof(buf),
+               ((messageLen > 1) && isdigit(message[1])) ? "\\%03o" : "\\%o",
                *message & 0377);
       len = 1;
     } else {
@@ -1262,7 +1281,8 @@ static char* readSeconds(char* e, struct timespec* t) {
   return p;
 }
 
-static struct timespec* sumTimespec(struct timespec* left, struct timespec* right) {
+static struct timespec* sumTimespec(struct timespec* left,
+                                    struct timespec* right) {
   left->tv_nsec += right->tv_nsec;
   left->tv_sec += right->tv_sec;
   if (left->tv_nsec >= (long)NS_PER_SEC) {
@@ -1272,7 +1292,8 @@ static struct timespec* sumTimespec(struct timespec* left, struct timespec* righ
   return left;
 }
 
-static struct timespec* subTimespec(struct timespec* result, struct timespec* left,
+static struct timespec* subTimespec(struct timespec* result,
+                                    struct timespec* left,
                                     struct timespec* right) {
   result->tv_nsec = left->tv_nsec - right->tv_nsec;
   result->tv_sec = left->tv_sec - right->tv_sec;
@@ -1288,7 +1309,8 @@ static long long nsecTimespec(struct timespec* now) {
 }
 
 #ifdef __ANDROID__
-static void convertMonotonic(struct timespec* result, const AndroidLogEntry* entry) {
+static void convertMonotonic(struct timespec* result,
+                             const AndroidLogEntry* entry) {
   struct listnode* node;
   struct conversionList {
     struct listnode node; /* first */
@@ -1300,8 +1322,8 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
   /* If we do not have a conversion list, build one up */
   if (list_empty(&convertHead)) {
     bool suspended_pending = false;
-    struct timespec suspended_monotonic = {0, 0};
-    struct timespec suspended_diff = {0, 0};
+    struct timespec suspended_monotonic = { 0, 0 };
+    struct timespec suspended_diff = { 0, 0 };
 
     /*
      * Read dmesg for _some_ synchronization markers and insert
@@ -1391,14 +1413,15 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
           } else {
             unsetenv(tz);
           }
-          list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+          list = calloc(1, sizeof(struct conversionList));
           list_init(&list->node);
           list->time = time;
           subTimespec(&list->convert, &time, &monotonic);
           list_add_tail(&convertHead, &list->node);
         }
         if (suspended_pending && !list_empty(&convertHead)) {
-          list = node_to_item(list_tail(&convertHead), struct conversionList, node);
+          list = node_to_item(list_tail(&convertHead), struct conversionList,
+                              node);
           if (subTimespec(&time, subTimespec(&time, &list->time, &list->convert),
                           &suspended_monotonic)
                   ->tv_sec > 0) {
@@ -1411,13 +1434,13 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
           time = suspended_monotonic;
           sumTimespec(&time, &convert);
           /* breakpoint just before sleep */
-          list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+          list = calloc(1, sizeof(struct conversionList));
           list_init(&list->node);
           list->time = time;
           list->convert = convert;
           list_add_tail(&convertHead, &list->node);
           /* breakpoint just after sleep */
-          list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+          list = calloc(1, sizeof(struct conversionList));
           list_init(&list->node);
           list->time = time;
           sumTimespec(&list->time, &suspended_diff);
@@ -1430,7 +1453,7 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
       pclose(p);
     }
     /* last entry is our current time conversion */
-    list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+    list = calloc(1, sizeof(struct conversionList));
     list_init(&list->node);
     clock_gettime(CLOCK_REALTIME, &list->time);
     clock_gettime(CLOCK_MONOTONIC, &convert);
@@ -1446,7 +1469,7 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
       time = suspended_monotonic;
       sumTimespec(&time, &convert);
       /* breakpoint just after sleep */
-      list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+      list = calloc(1, sizeof(struct conversionList));
       list_init(&list->node);
       list->time = time;
       sumTimespec(&list->time, &suspended_diff);
@@ -1454,7 +1477,7 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
       sumTimespec(&list->convert, &suspended_diff);
       list_add_head(&convertHead, &list->node);
       /* breakpoint just before sleep */
-      list = static_cast<conversionList*>(calloc(1, sizeof(conversionList)));
+      list = calloc(1, sizeof(struct conversionList));
       list_init(&list->node);
       list->time = time;
       list->convert = convert;
@@ -1525,7 +1548,8 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
  * Returns NULL on malloc error
  */
 
-LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, char* defaultBuffer,
+LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format,
+                                                  char* defaultBuffer,
                                                   size_t defaultBufferSize,
                                                   const AndroidLogEntry* entry,
                                                   size_t* p_outLength) {
@@ -1576,23 +1600,26 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
   }
   if (p_format->epoch_output || p_format->monotonic_output) {
     ptm = NULL;
-    snprintf(timeBuf, sizeof(timeBuf), p_format->monotonic_output ? "%6lld" : "%19lld",
-             (long long)now);
+    snprintf(timeBuf, sizeof(timeBuf),
+             p_format->monotonic_output ? "%6lld" : "%19lld", (long long)now);
   } else {
 #if !defined(_WIN32)
     ptm = localtime_r(&now, &tmBuf);
 #else
     ptm = localtime(&now);
 #endif
-    strftime(timeBuf, sizeof(timeBuf), &"%Y-%m-%d %H:%M:%S"[p_format->year_output ? 0 : 3], ptm);
+    strftime(timeBuf, sizeof(timeBuf),
+             &"%Y-%m-%d %H:%M:%S"[p_format->year_output ? 0 : 3], ptm);
   }
   len = strlen(timeBuf);
   if (p_format->nsec_time_output) {
     len += snprintf(timeBuf + len, sizeof(timeBuf) - len, ".%09ld", nsec);
   } else if (p_format->usec_time_output) {
-    len += snprintf(timeBuf + len, sizeof(timeBuf) - len, ".%06ld", nsec / US_PER_NSEC);
+    len += snprintf(timeBuf + len, sizeof(timeBuf) - len, ".%06ld",
+                    nsec / US_PER_NSEC);
   } else {
-    len += snprintf(timeBuf + len, sizeof(timeBuf) - len, ".%03ld", nsec / MS_PER_NSEC);
+    len += snprintf(timeBuf + len, sizeof(timeBuf) - len, ".%03ld",
+                    nsec / MS_PER_NSEC);
   }
   if (p_format->zone_output && ptm) {
     strftime(timeBuf + len, sizeof(timeBuf) - len, " %z", ptm);
@@ -1602,8 +1629,8 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
    * Construct a buffer containing the log header and log message.
    */
   if (p_format->colored_output) {
-    prefixLen =
-        snprintf(prefixBuf, sizeof(prefixBuf), "\x1B[38;5;%dm", colorFromPri(entry->priority));
+    prefixLen = snprintf(prefixBuf, sizeof(prefixBuf), "\x1B[38;5;%dm",
+                         colorFromPri(entry->priority));
     prefixLen = MIN(prefixLen, sizeof(prefixBuf));
 
     const char suffixContents[] = "\x1B[0m";
@@ -1622,7 +1649,8 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
 #if !defined(__MINGW32__)
 #if (FAKE_LOG_DEVICE == 0)
 #ifndef __BIONIC__
-#warning "This code assumes that getpwuid is thread safe, only true with Bionic!"
+#warning \
+    "This code assumes that getpwuid is thread safe, only true with Bionic!"
 #endif
 #endif
       struct passwd* pwd = getpwuid(entry->uid);
@@ -1641,21 +1669,21 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
 
   switch (p_format->format) {
     case FORMAT_TAG:
-      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen, "%c/%-8.*s: ", priChar,
-                     (int)entry->tagLen, entry->tag);
+      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
+                     "%c/%-8.*s: ", priChar, (int)entry->tagLen, entry->tag);
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;
     case FORMAT_PROCESS:
-      len = snprintf(suffixBuf + suffixLen, sizeof(suffixBuf) - suffixLen, "  (%.*s)\n",
-                     (int)entry->tagLen, entry->tag);
+      len = snprintf(suffixBuf + suffixLen, sizeof(suffixBuf) - suffixLen,
+                     "  (%.*s)\n", (int)entry->tagLen, entry->tag);
       suffixLen += MIN(len, sizeof(suffixBuf) - suffixLen);
-      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen, "%c(%s%5d) ", priChar,
-                     uid, entry->pid);
+      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
+                     "%c(%s%5d) ", priChar, uid, entry->pid);
       break;
     case FORMAT_THREAD:
-      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen, "%c(%s%5d:%5d) ",
-                     priChar, uid, entry->pid, entry->tid);
+      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
+                     "%c(%s%5d:%5d) ", priChar, uid, entry->pid, entry->tid);
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;
@@ -1667,8 +1695,8 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
       break;
     case FORMAT_TIME:
       len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
-                     "%s %c/%-8.*s(%s%5d): ", timeBuf, priChar, (int)entry->tagLen, entry->tag, uid,
-                     entry->pid);
+                     "%s %c/%-8.*s(%s%5d): ", timeBuf, priChar,
+                     (int)entry->tagLen, entry->tag, uid, entry->pid);
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;
@@ -1678,24 +1706,24 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
         *ret = ' ';
       }
       len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
-                     "%s %s%5d %5d %c %-8.*s: ", timeBuf, uid, entry->pid, entry->tid, priChar,
-                     (int)entry->tagLen, entry->tag);
+                     "%s %s%5d %5d %c %-8.*s: ", timeBuf, uid, entry->pid,
+                     entry->tid, priChar, (int)entry->tagLen, entry->tag);
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;
     case FORMAT_LONG:
       len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
-                     "[ %s %s%5d:%5d %c/%-8.*s ]\n", timeBuf, uid, entry->pid, entry->tid, priChar,
-                     (int)entry->tagLen, entry->tag);
+                     "[ %s %s%5d:%5d %c/%-8.*s ]\n", timeBuf, uid, entry->pid,
+                     entry->tid, priChar, (int)entry->tagLen, entry->tag);
       strcpy(suffixBuf + suffixLen, "\n\n");
       suffixLen += 2;
       prefixSuffixIsHeaderFooter = 1;
       break;
     case FORMAT_BRIEF:
     default:
-      len =
-          snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
-                   "%c/%-8.*s(%s%5d): ", priChar, (int)entry->tagLen, entry->tag, uid, entry->pid);
+      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
+                     "%c/%-8.*s(%s%5d): ", priChar, (int)entry->tagLen,
+                     entry->tag, uid, entry->pid);
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;
@@ -1819,15 +1847,16 @@ LIBLOG_ABI_PUBLIC char* android_log_formatLogLine(AndroidLogFormat* p_format, ch
  * Returns count bytes written
  */
 
-LIBLOG_ABI_PUBLIC int android_log_printLogLine(AndroidLogFormat* p_format, int fd,
+LIBLOG_ABI_PUBLIC int android_log_printLogLine(AndroidLogFormat* p_format,
+                                               int fd,
                                                const AndroidLogEntry* entry) {
   int ret;
   char defaultBuffer[512];
   char* outBuffer = NULL;
   size_t totalLen;
 
-  outBuffer =
-      android_log_formatLogLine(p_format, defaultBuffer, sizeof(defaultBuffer), entry, &totalLen);
+  outBuffer = android_log_formatLogLine(
+      p_format, defaultBuffer, sizeof(defaultBuffer), entry, &totalLen);
 
   if (!outBuffer) return -1;
 
