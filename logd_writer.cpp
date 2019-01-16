@@ -38,7 +38,6 @@
 #include "config_write.h"
 #include "log_portability.h"
 #include "logger.h"
-#include "uio.h"
 
 /* branchless on many architectures. */
 #define min(x, y) ((y) ^ (((x) ^ (y)) & -((x) < (y))))

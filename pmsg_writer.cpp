@@ -33,7 +33,6 @@
 #include "config_write.h"
 #include "log_portability.h"
 #include "logger.h"
-#include "uio.h"
 
 static int pmsgOpen();
 static void pmsgClose();

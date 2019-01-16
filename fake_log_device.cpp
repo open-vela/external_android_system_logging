@@ -33,6 +33,7 @@
 #include <time.h>
 
 #include <android/log.h>
+#include <log/uio.h>
 
 #include "log_portability.h"
 
