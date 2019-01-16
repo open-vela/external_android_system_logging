@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LIBS_LOG_LOG_ID_H
+#define _LIBS_LOG_LOG_ID_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,3 +62,5 @@ const char* android_log_id_to_name(log_id_t log_id);
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _LIBS_LOG_LOG_ID_H */

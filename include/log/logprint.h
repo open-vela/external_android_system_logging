@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LOGPRINT_H
+#define _LOGPRINT_H
 
 #include <pthread.h>
 
@@ -157,3 +158,5 @@ int android_log_printLogLine(AndroidLogFormat* p_format, int fd,
 #ifdef __cplusplus
 }
 #endif
+
+#endif /*_LOGPRINT_H*/

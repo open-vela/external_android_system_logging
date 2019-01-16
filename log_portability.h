@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LIBLOG_PORTABILITY_H__
+#define _LIBLOG_PORTABILITY_H__
 
 #include <sys/cdefs.h>
 #include <unistd.h>
@@ -74,3 +75,5 @@
     _rc;                                   \
   })
 #endif
+
+#endif /* _LIBLOG_PORTABILITY_H__ */
