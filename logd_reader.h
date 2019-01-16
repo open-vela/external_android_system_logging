@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LIBLOG_LOGD_READER_H__
+#define _LIBLOG_LOGD_READER_H__
 
 #include <unistd.h>
 
@@ -25,3 +26,5 @@ __BEGIN_DECLS
 LIBLOG_HIDDEN ssize_t __send_log_msg(char* buf, size_t buf_size);
 
 __END_DECLS
+
+#endif /* _LIBLOG_LOGD_READER_H__ */

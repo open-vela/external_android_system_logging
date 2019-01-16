@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LIBS_LOG_EVENT_LIST_H
+#define _LIBS_LOG_EVENT_LIST_H
 
 #include <errno.h>
 #include <stdint.h>
@@ -298,3 +299,5 @@ class android_log_event_list {
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _LIBS_LOG_EVENT_LIST_H */

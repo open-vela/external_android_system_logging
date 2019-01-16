@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#pragma once
+#ifndef _LIBLOG_CONFIG_READ_H__
+#define _LIBLOG_CONFIG_READ_H__
 
 #include <cutils/list.h>
 
@@ -50,3 +51,5 @@ LIBLOG_HIDDEN void __android_log_config_read();
 LIBLOG_HIDDEN void __android_log_config_read_close();
 
 __END_DECLS
+
+#endif /* _LIBLOG_CONFIG_READ_H__ */

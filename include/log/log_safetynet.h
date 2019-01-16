@@ -7,7 +7,8 @@
 ** General Public License.
 */
 
-#pragma once
+#ifndef _LIBS_LOG_SAFETYNET_H
+#define _LIBS_LOG_SAFETYNET_H
 
 #include <stdint.h>
 
@@ -27,3 +28,5 @@ int __android_log_error_write(int tag, const char* subTag, int32_t uid,
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _LIBS_LOG_SAFETYNET_H */
