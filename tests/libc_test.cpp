@@ -23,7 +23,7 @@ TEST(libc, __pstore_append) {
 #ifdef __ANDROID__
 #ifndef NO_PSTORE
   FILE* fp;
-  ASSERT_TRUE(NULL != (fp = fopen("/dev/pmsg0", "ae")));
+  ASSERT_TRUE(NULL != (fp = fopen("/dev/pmsg0", "a")));
   static const char message[] = "libc.__pstore_append\n";
   ASSERT_EQ((size_t)1, fwrite(message, sizeof(message), 1, fp));
   int fflushReturn = fflush(fp);
