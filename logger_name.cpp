@@ -50,9 +50,8 @@ log_id_t android_name_to_log_id(const char* logName) {
   unsigned int ret;
 
   if (!logName) {
-    return static_cast<log_id_t>(LOG_ID_MAX);
+    return static_cast<log_id_t>(0xFFFFFFFF);
   }
-
   b = strrchr(logName, '/');
   if (!b) {
     b = logName;
@@ -66,6 +65,5 @@ log_id_t android_name_to_log_id(const char* logName) {
       return static_cast<log_id_t>(ret);
     }
   }
-
-  return static_cast<log_id_t>(LOG_ID_MAX);
+  return static_cast<log_id_t>(0xFFFFFFFF); /* should never happen */
 }
