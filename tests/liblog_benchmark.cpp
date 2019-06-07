@@ -559,7 +559,7 @@ static void test_print(const char* fmt, ...) {
 /* performance test */
 static void BM_sprintf_overhead(benchmark::State& state) {
   while (state.KeepRunning()) {
-    test_print("BM_sprintf_overhead:%" PRIu64, state.iterations());
+    test_print("BM_sprintf_overhead:%zu", state.iterations());
     state.PauseTiming();
     logd_yield();
     state.ResumeTiming();
