@@ -35,6 +35,7 @@
 #include <private/android_filesystem_config.h>
 #include <private/android_logger.h>
 
+#include "config_read.h"
 #include "log_portability.h"
 #include "logd_reader.h"
 #include "logger.h"
