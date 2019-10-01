@@ -31,9 +31,12 @@ union android_log_context_union {
   void* priv;
   atomic_int sock;
   atomic_int fd;
+  struct listnode* node;
+  atomic_uintptr_t atomic_pointer;
 };
 
 struct android_log_transport_write {
+  struct listnode node;
   const char* name;                  /* human name to describe the transport */
   unsigned logMask;                  /* mask cache of available() success */
   union android_log_context_union context; /* Initialized by static allocation */
@@ -51,6 +54,7 @@ struct android_log_transport_context;
 struct android_log_logger;
 
 struct android_log_transport_read {
+  struct listnode node;
   const char* name; /* human name to describe the transport */
 
   /* Does not cause resources to be taken */
@@ -144,5 +148,7 @@ static inline uid_t __android_log_uid() {
 void __android_log_lock();
 int __android_log_trylock();
 void __android_log_unlock();
+
+extern int __android_log_transport;
 
 __END_DECLS
