@@ -38,6 +38,9 @@
 #include "logger.h"
 #include "uio.h"
 
+/* branchless on many architectures. */
+#define min(x, y) ((y) ^ (((x) ^ (y)) & -((x) < (y))))
+
 static int logdAvailable(log_id_t LogId);
 static int logdOpen();
 static void logdClose();
