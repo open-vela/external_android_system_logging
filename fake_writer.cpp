@@ -24,7 +24,6 @@
 #include "log_portability.h"
 #include "logger.h"
 
-static int fakeAvailable(log_id_t);
 static int fakeOpen();
 static void fakeClose();
 static int fakeWrite(log_id_t log_id, struct timespec* ts, struct iovec* vec, size_t nr);
@@ -35,15 +34,11 @@ struct android_log_transport_write fakeLoggerWrite = {
     .name = "fake",
     .logMask = 0,
     .context.priv = &logFds,
-    .available = fakeAvailable,
+    .available = NULL,
     .open = fakeOpen,
     .close = fakeClose,
     .write = fakeWrite,
 };
-
-static int fakeAvailable(log_id_t) {
-  return 0;
-}
 
 static int fakeOpen() {
   int i;
