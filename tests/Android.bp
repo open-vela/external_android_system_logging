@@ -68,7 +68,6 @@ cc_defaults {
         "libbase",
     ],
     static_libs: ["liblog"],
-    isolated: true,
 }
 
 // Build tests for the device (with .so). Run with:
