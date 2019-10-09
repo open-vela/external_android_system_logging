@@ -1924,10 +1924,10 @@ static void android_errorWriteWithInfoLog_helper(int TAG, const char* SUBTAG,
     char* original = eventData;
 
     // Tag
-    auto* event_header = reinterpret_cast<android_event_header_t*>(eventData);
-    eventData += sizeof(android_event_header_t);
+    int tag = *reinterpret_cast<int32_t*>(eventData);
+    eventData += 4;
 
-    if (event_header->tag != TAG) {
+    if (tag != TAG) {
       continue;
     }
 
@@ -1938,37 +1938,45 @@ static void android_errorWriteWithInfoLog_helper(int TAG, const char* SUBTAG,
     }
 
     // List type
-    auto* event_list = reinterpret_cast<android_event_list_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_LIST, event_list->type);
-    ASSERT_EQ(3, event_list->element_count);
-    eventData += sizeof(android_event_list_t);
+    ASSERT_EQ(EVENT_TYPE_LIST, eventData[0]);
+    eventData++;
+
+    // Number of elements in list
+    ASSERT_EQ(3, eventData[0]);
+    eventData++;
 
     // Element #1: string type for subtag
-    auto* event_string_subtag = reinterpret_cast<android_event_string_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_STRING, event_string_subtag->type);
+    ASSERT_EQ(EVENT_TYPE_STRING, eventData[0]);
+    eventData++;
+
     unsigned subtag_len = strlen(SUBTAG);
     if (subtag_len > 32) subtag_len = 32;
-    ASSERT_EQ(static_cast<int32_t>(subtag_len), event_string_subtag->length);
-    if (memcmp(SUBTAG, &event_string_subtag->data, subtag_len)) {
+    ASSERT_EQ(subtag_len, *reinterpret_cast<uint32_t*>(eventData));
+    eventData += 4;
+
+    if (memcmp(SUBTAG, eventData, subtag_len)) {
       continue;
     }
-    eventData += sizeof(android_event_string_t) + subtag_len;
+    eventData += subtag_len;
 
     // Element #2: int type for uid
-    auto* event_int_uid = reinterpret_cast<android_event_int_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_INT, event_int_uid->type);
-    ASSERT_EQ(UID, event_int_uid->data);
-    eventData += sizeof(android_event_int_t);
+    ASSERT_EQ(EVENT_TYPE_INT, eventData[0]);
+    eventData++;
+
+    ASSERT_EQ(UID, *reinterpret_cast<int32_t*>(eventData));
+    eventData += 4;
 
     // Element #3: string type for data
-    auto* event_string_data = reinterpret_cast<android_event_string_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_STRING, event_string_data->type);
-    size_t dataLen = event_string_data->length;
+    ASSERT_EQ(EVENT_TYPE_STRING, eventData[0]);
+    eventData++;
+
+    size_t dataLen = *reinterpret_cast<int32_t*>(eventData);
+    eventData += 4;
     if (DATA_LEN < 512) ASSERT_EQ(DATA_LEN, (int)dataLen);
-    if (memcmp(payload, &event_string_data->data, dataLen)) {
+
+    if (memcmp(payload, eventData, dataLen)) {
       continue;
     }
-    eventData += sizeof(android_event_string_t);
 
     if (DATA_LEN >= 512) {
       eventData += dataLen;
@@ -2074,12 +2082,10 @@ static void android_errorWriteLog_helper(int TAG, const char* SUBTAG,
     if (!eventData) continue;
 
     // Tag
-    auto* event_header = reinterpret_cast<android_event_header_t*>(eventData);
-    eventData += sizeof(android_event_header_t);
+    int tag = *reinterpret_cast<int32_t*>(eventData);
+    eventData += 4;
 
-    if (event_header->tag != TAG) {
-      continue;
-    }
+    if (tag != TAG) continue;
 
     if (!SUBTAG) {
       // This tag should not have been written because the data was null
@@ -2129,10 +2135,10 @@ static void android_errorWriteLog_helper(int TAG, const char* SUBTAG,
     }
 
     // Tag
-    auto* event_header = reinterpret_cast<android_event_header_t*>(eventData);
-    eventData += sizeof(android_event_header_t);
+    int tag = *reinterpret_cast<int32_t*>(eventData);
+    eventData += 4;
 
-    if (event_header->tag != TAG) {
+    if (tag != TAG) {
       continue;
     }
 
@@ -2143,17 +2149,21 @@ static void android_errorWriteLog_helper(int TAG, const char* SUBTAG,
     }
 
     // List type
-    auto* event_list = reinterpret_cast<android_event_list_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_LIST, event_list->type);
-    ASSERT_EQ(3, event_list->element_count);
-    eventData += sizeof(android_event_list_t);
+    ASSERT_EQ(EVENT_TYPE_LIST, eventData[0]);
+    eventData++;
+
+    // Number of elements in list
+    ASSERT_EQ(3, eventData[0]);
+    eventData++;
 
     // Element #1: string type for subtag
-    auto* event_string = reinterpret_cast<android_event_string_t*>(eventData);
-    ASSERT_EQ(EVENT_TYPE_STRING, event_string->type);
-    ASSERT_EQ(static_cast<int32_t>(strlen(SUBTAG)), event_string->length);
+    ASSERT_EQ(EVENT_TYPE_STRING, eventData[0]);
+    eventData++;
 
-    if (memcmp(SUBTAG, &event_string->data, strlen(SUBTAG))) {
+    ASSERT_EQ(strlen(SUBTAG), *reinterpret_cast<uint32_t*>(eventData));
+    eventData += 4;
+
+    if (memcmp(SUBTAG, eventData, strlen(SUBTAG))) {
       continue;
     }
     ++count;
@@ -2663,14 +2673,13 @@ static void create_android_logger(const char* (*fn)(uint32_t tag,
     // test buffer reading API
     int buffer_to_string = -1;
     if (eventData) {
-      auto* event_header = reinterpret_cast<android_event_header_t*>(eventData);
-      eventData += sizeof(android_event_header_t);
-      snprintf(msgBuf, sizeof(msgBuf), "I/[%" PRId32 "]", event_header->tag);
+      snprintf(msgBuf, sizeof(msgBuf), "I/[%" PRIu32 "]", *reinterpret_cast<uint32_t*>(eventData));
       print_barrier();
       fprintf(stderr, "%-10s(%5u): ", msgBuf, pid);
       memset(msgBuf, 0, sizeof(msgBuf));
-      buffer_to_string =
-          android_log_buffer_to_string(eventData, log_msg.entry.len, msgBuf, sizeof(msgBuf));
+      buffer_to_string = android_log_buffer_to_string(
+          eventData + sizeof(uint32_t), log_msg.entry.len - sizeof(uint32_t),
+          msgBuf, sizeof(msgBuf));
       fprintf(stderr, "%s\n", msgBuf);
       print_barrier();
     }

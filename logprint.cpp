@@ -35,10 +35,8 @@
 #include <wchar.h>
 
 #include <cutils/list.h>
-
 #include <log/log.h>
 #include <log/logprint.h>
-#include <private/android_logger.h>
 
 #include "log_portability.h"
 
@@ -637,7 +635,8 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
 
   if (eventDataLen < 1) return -1;
 
-  type = *eventData;
+  type = *eventData++;
+  eventDataLen--;
 
   cp = NULL;
   len = 0;
@@ -726,24 +725,22 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
     case EVENT_TYPE_INT:
       /* 32-bit signed int */
       {
-        if (eventDataLen < sizeof(android_event_int_t)) return -1;
-        auto* event_int = reinterpret_cast<const android_event_int_t*>(eventData);
-        lval = event_int->data;
-        eventData += sizeof(android_event_int_t);
-        eventDataLen -= sizeof(android_event_int_t);
+        int32_t ival;
+
+        if (eventDataLen < 4) return -1;
+        ival = *reinterpret_cast<const int32_t*>(eventData);
+        eventData += 4;
+        eventDataLen -= 4;
+
+        lval = ival;
       }
       goto pr_lval;
     case EVENT_TYPE_LONG:
       /* 64-bit signed long */
-      if (eventDataLen < sizeof(android_event_long_t)) {
-        return -1;
-      }
-      {
-        auto* event_long = reinterpret_cast<const android_event_long_t*>(eventData);
-        lval = event_long->data;
-      }
-      eventData += sizeof(android_event_long_t);
-      eventDataLen -= sizeof(android_event_long_t);
+      if (eventDataLen < 8) return -1;
+      lval = *reinterpret_cast<const int64_t*>(eventData);
+      eventData += 8;
+      eventDataLen -= 8;
     pr_lval:
       outCount = snprintf(outBuf, outBufLen, "%" PRId64, lval);
       if (outCount < outBufLen) {
@@ -757,11 +754,14 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
     case EVENT_TYPE_FLOAT:
       /* float */
       {
-        if (eventDataLen < sizeof(android_event_float_t)) return -1;
-        auto* event_float = reinterpret_cast<const android_event_float_t*>(eventData);
-        float fval = event_float->data;
-        eventData += sizeof(android_event_int_t);
-        eventDataLen -= sizeof(android_event_int_t);
+        uint32_t ival;
+        float fval;
+
+        if (eventDataLen < 4) return -1;
+        ival = *reinterpret_cast<const uint32_t*>(eventData);
+        fval = *(float*)&ival;
+        eventData += 4;
+        eventDataLen -= 4;
 
         outCount = snprintf(outBuf, outBufLen, "%f", fval);
         if (outCount < outBufLen) {
@@ -776,11 +776,12 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
     case EVENT_TYPE_STRING:
       /* UTF-8 chars, not NULL-terminated */
       {
-        if (eventDataLen < sizeof(android_event_string_t)) return -1;
-        auto* event_string = reinterpret_cast<const android_event_string_t*>(eventData);
-        unsigned int strLen = event_string->length;
-        eventData += sizeof(android_event_string_t);
-        eventDataLen -= sizeof(android_event_string_t);
+        unsigned int strLen;
+
+        if (eventDataLen < 4) return -1;
+        strLen = *reinterpret_cast<const uint32_t*>(eventData);
+        eventData += 4;
+        eventDataLen -= 4;
 
         if (eventDataLen < strLen) {
           result = -1; /* mark truncated */
@@ -813,19 +814,20 @@ static int android_log_printBinaryEvent(const unsigned char** pEventData, size_t
     case EVENT_TYPE_LIST:
       /* N items, all different types */
       {
-        if (eventDataLen < sizeof(android_event_list_t)) return -1;
-        auto* event_list = reinterpret_cast<const android_event_list_t*>(eventData);
+        unsigned char count;
+        int i;
 
-        int8_t count = event_list->element_count;
-        eventData += sizeof(android_event_list_t);
-        eventDataLen -= sizeof(android_event_list_t);
+        if (eventDataLen < 1) return -1;
+
+        count = *eventData++;
+        eventDataLen--;
 
         if (outBufLen <= 0) goto no_room;
 
         *outBuf++ = '[';
         outBufLen--;
 
-        for (int i = 0; i < count; i++) {
+        for (i = 0; i < count; i++) {
           result = android_log_printBinaryEvent(&eventData, &eventDataLen, &outBuf, &outBufLen,
                                                 fmtStr, fmtLen);
           if (result != 0) goto bail;
@@ -1015,11 +1017,10 @@ int android_log_processBinaryLogBuffer(
     }
   }
   inCount = buf->len;
-  if (inCount < sizeof(android_event_header_t)) return -1;
-  auto* event_header = reinterpret_cast<const android_event_header_t*>(eventData);
-  tagIndex = event_header->tag;
-  eventData += sizeof(android_event_header_t);
-  inCount -= sizeof(android_event_header_t);
+  if (inCount < 4) return -1;
+  tagIndex = *reinterpret_cast<const uint32_t*>(eventData);
+  eventData += 4;
+  inCount -= 4;
 
   entry->tagLen = 0;
   entry->tag = NULL;
