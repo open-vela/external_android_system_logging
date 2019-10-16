@@ -45,8 +45,12 @@ typedef enum log_id {
  */
 int __android_log_buf_write(int bufID, int prio, const char* tag,
                             const char* text);
-int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fmt, ...)
-    __attribute__((__format__(printf, 4, 5)));
+int __android_log_buf_print(int bufID, int prio, const char* tag,
+                            const char* fmt, ...)
+#if defined(__GNUC__)
+    __attribute__((__format__(printf, 4, 5)))
+#endif
+    ;
 
 /*
  * log_id_t helpers
