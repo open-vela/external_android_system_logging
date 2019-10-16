@@ -135,8 +135,6 @@ void __android_log_assert(const char* cond, const char* tag, const char* fmt,
 #endif
     ;
 
-#ifndef log_id_t_defined
-#define log_id_t_defined
 /**
  * Identifies a specific log buffer for __android_log_buf_write()
  * and __android_log_buf_print().
@@ -163,7 +161,6 @@ typedef enum log_id {
 
   LOG_ID_MAX
 } log_id_t;
-#endif
 
 /**
  * Writes the constant string `text` to the log buffer `id`,
