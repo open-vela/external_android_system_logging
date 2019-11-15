@@ -39,43 +39,47 @@
 #include "logd_reader.h"
 #include "logger.h"
 
-static int LogdAvailable(log_id_t LogId);
-static int LogdVersion(struct logger* logger, struct android_log_transport_context* transp);
-static int LogdRead(struct logger_list* logger_list, struct android_log_transport_context* transp,
-                    struct log_msg* log_msg);
-static int LogdPoll(struct logger_list* logger_list, struct android_log_transport_context* transp);
-static void LogdClose(struct logger_list* logger_list,
+static int logdAvailable(log_id_t LogId);
+static int logdVersion(struct android_log_logger* logger,
+                       struct android_log_transport_context* transp);
+static int logdRead(struct android_log_logger_list* logger_list,
+                    struct android_log_transport_context* transp, struct log_msg* log_msg);
+static int logdPoll(struct android_log_logger_list* logger_list,
+                    struct android_log_transport_context* transp);
+static void logdClose(struct android_log_logger_list* logger_list,
                       struct android_log_transport_context* transp);
-static int LogdClear(struct logger* logger, struct android_log_transport_context* transp);
-static ssize_t LogdSetSize(struct logger* logger, struct android_log_transport_context* transp,
-                           size_t size);
-static ssize_t LogdGetSize(struct logger* logger, struct android_log_transport_context* transp);
-static ssize_t LogdGetReadableSize(struct logger* logger,
+static int logdClear(struct android_log_logger* logger,
+                     struct android_log_transport_context* transp);
+static ssize_t logdSetSize(struct android_log_logger* logger,
+                           struct android_log_transport_context* transp, size_t size);
+static ssize_t logdGetSize(struct android_log_logger* logger,
+                           struct android_log_transport_context* transp);
+static ssize_t logdGetReadableSize(struct android_log_logger* logger,
                                    struct android_log_transport_context* transp);
-static ssize_t LogdGetPrune(struct logger_list* logger,
+static ssize_t logdGetPrune(struct android_log_logger_list* logger,
                             struct android_log_transport_context* transp, char* buf, size_t len);
-static ssize_t LogdSetPrune(struct logger_list* logger,
+static ssize_t logdSetPrune(struct android_log_logger_list* logger,
                             struct android_log_transport_context* transp, char* buf, size_t len);
-static ssize_t LogdGetStats(struct logger_list* logger,
+static ssize_t logdGetStats(struct android_log_logger_list* logger,
                             struct android_log_transport_context* transp, char* buf, size_t len);
 
 struct android_log_transport_read logdLoggerRead = {
     .name = "logd",
-    .available = LogdAvailable,
-    .version = LogdVersion,
-    .close = LogdClose,
-    .read = LogdRead,
-    .poll = LogdPoll,
-    .clear = LogdClear,
-    .setSize = LogdSetSize,
-    .getSize = LogdGetSize,
-    .getReadableSize = LogdGetReadableSize,
-    .getPrune = LogdGetPrune,
-    .setPrune = LogdSetPrune,
-    .getStats = LogdGetStats,
+    .available = logdAvailable,
+    .version = logdVersion,
+    .close = logdClose,
+    .read = logdRead,
+    .poll = logdPoll,
+    .clear = logdClear,
+    .setSize = logdSetSize,
+    .getSize = logdGetSize,
+    .getReadableSize = logdGetReadableSize,
+    .getPrune = logdGetPrune,
+    .setPrune = logdSetPrune,
+    .getStats = logdGetStats,
 };
 
-static int LogdAvailable(log_id_t logId) {
+static int logdAvailable(log_id_t logId) {
   if (logId >= LOG_ID_MAX) {
     return -EINVAL;
   }
@@ -116,7 +120,8 @@ static int socket_local_client(const std::string& name, int type) {
 }
 
 /* worker for sending the command to the logger */
-static ssize_t send_log_msg(struct logger* logger, const char* msg, char* buf, size_t buf_size) {
+static ssize_t send_log_msg(struct android_log_logger* logger, const char* msg, char* buf,
+                            size_t buf_size) {
   ssize_t ret;
   size_t len;
   char* cp;
@@ -197,14 +202,16 @@ static int check_log_success(char* buf, ssize_t ret) {
   return 0;
 }
 
-static int LogdClear(struct logger* logger, struct android_log_transport_context*) {
+static int logdClear(struct android_log_logger* logger,
+                     struct android_log_transport_context* transp __unused) {
   char buf[512];
 
   return check_log_success(buf, send_log_msg(logger, "clear %d", buf, sizeof(buf)));
 }
 
 /* returns the total size of the log's ring buffer */
-static ssize_t LogdGetSize(struct logger* logger, struct android_log_transport_context*) {
+static ssize_t logdGetSize(struct android_log_logger* logger,
+                           struct android_log_transport_context* transp __unused) {
   char buf[512];
 
   ssize_t ret = send_log_msg(logger, "getLogSize %d", buf, sizeof(buf));
@@ -219,8 +226,8 @@ static ssize_t LogdGetSize(struct logger* logger, struct android_log_transport_c
   return atol(buf);
 }
 
-static ssize_t LogdSetSize(struct logger* logger, struct android_log_transport_context*,
-                           size_t size) {
+static ssize_t logdSetSize(struct android_log_logger* logger,
+                           struct android_log_transport_context* transp __unused, size_t size) {
   char buf[512];
 
   snprintf(buf, sizeof(buf), "setLogSize %d %zu", logger->logId, size);
@@ -232,7 +239,8 @@ static ssize_t LogdSetSize(struct logger* logger, struct android_log_transport_c
  * returns the readable size of the log's ring buffer (that is, amount of the
  * log consumed)
  */
-static ssize_t LogdGetReadableSize(struct logger* logger, struct android_log_transport_context*) {
+static ssize_t logdGetReadableSize(struct android_log_logger* logger,
+                                   struct android_log_transport_context* transp __unused) {
   char buf[512];
 
   ssize_t ret = send_log_msg(logger, "getLogSizeUsed %d", buf, sizeof(buf));
@@ -250,7 +258,8 @@ static ssize_t LogdGetReadableSize(struct logger* logger, struct android_log_tra
 /*
  * returns the logger version
  */
-static int LogdVersion(struct logger*, struct android_log_transport_context*) {
+static int logdVersion(struct android_log_logger* logger __unused,
+                       struct android_log_transport_context* transp __unused) {
   uid_t uid = __android_log_uid();
   return ((uid != AID_ROOT) && (uid != AID_LOG) && (uid != AID_SYSTEM)) ? 3 : 4;
 }
@@ -258,9 +267,10 @@ static int LogdVersion(struct logger*, struct android_log_transport_context*) {
 /*
  * returns statistics
  */
-static ssize_t LogdGetStats(struct logger_list* logger_list, struct android_log_transport_context*,
-                            char* buf, size_t len) {
-  struct logger* logger;
+static ssize_t logdGetStats(struct android_log_logger_list* logger_list,
+                            struct android_log_transport_context* transp __unused, char* buf,
+                            size_t len) {
+  struct android_log_logger* logger;
   char* cp = buf;
   size_t remaining = len;
   size_t n;
@@ -284,12 +294,14 @@ static ssize_t LogdGetStats(struct logger_list* logger_list, struct android_log_
   return send_log_msg(NULL, NULL, buf, len);
 }
 
-static ssize_t LogdGetPrune(struct logger_list*, struct android_log_transport_context*, char* buf,
+static ssize_t logdGetPrune(struct android_log_logger_list* logger_list __unused,
+                            struct android_log_transport_context* transp __unused, char* buf,
                             size_t len) {
   return send_log_msg(NULL, "getPruneList", buf, len);
 }
 
-static ssize_t LogdSetPrune(struct logger_list*, struct android_log_transport_context*, char* buf,
+static ssize_t logdSetPrune(struct android_log_logger_list* logger_list __unused,
+                            struct android_log_transport_context* transp __unused, char* buf,
                             size_t len) {
   const char cmd[] = "setPruneList ";
   const size_t cmdlen = sizeof(cmd) - 1;
@@ -304,8 +316,9 @@ static ssize_t LogdSetPrune(struct logger_list*, struct android_log_transport_co
   return check_log_success(buf, send_log_msg(NULL, NULL, buf, len));
 }
 
-static int logdOpen(struct logger_list* logger_list, struct android_log_transport_context* transp) {
-  struct logger* logger;
+static int logdOpen(struct android_log_logger_list* logger_list,
+                    struct android_log_transport_context* transp) {
+  struct android_log_logger* logger;
   char buffer[256], *cp, c;
   int ret, remaining, sock;
 
@@ -391,8 +404,8 @@ static int logdOpen(struct logger_list* logger_list, struct android_log_transpor
 }
 
 /* Read from the selected logs */
-static int LogdRead(struct logger_list* logger_list, struct android_log_transport_context* transp,
-                    struct log_msg* log_msg) {
+static int logdRead(struct android_log_logger_list* logger_list,
+                    struct android_log_transport_context* transp, struct log_msg* log_msg) {
   int ret = logdOpen(logger_list, transp);
   if (ret < 0) {
     return ret;
@@ -412,7 +425,8 @@ static int LogdRead(struct logger_list* logger_list, struct android_log_transpor
   return ret;
 }
 
-static int LogdPoll(struct logger_list* logger_list, struct android_log_transport_context* transp) {
+static int logdPoll(struct android_log_logger_list* logger_list,
+                    struct android_log_transport_context* transp) {
   struct pollfd p;
 
   int ret = logdOpen(logger_list, transp);
@@ -434,7 +448,8 @@ static int LogdPoll(struct logger_list* logger_list, struct android_log_transpor
 }
 
 /* Close all the logs */
-static void LogdClose(struct logger_list*, struct android_log_transport_context* transp) {
+static void logdClose(struct android_log_logger_list* logger_list __unused,
+                      struct android_log_transport_context* transp) {
   int sock = atomic_exchange(&transp->context.sock, -1);
   if (sock > 0) {
     close(sock);
