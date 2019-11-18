@@ -109,7 +109,7 @@ int android_logger_list_read(struct logger_list* logger_list, struct log_msg* lo
 
   int ret = (*transp->transport->read)(logger_list, transp, log_msg);
 
-  if (ret < 0) {
+  if (ret <= 0) {
     return ret;
   }
 
