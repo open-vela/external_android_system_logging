@@ -46,8 +46,11 @@ android_log_transport_write* android_log_write = &fakeLoggerWrite;
 android_log_transport_write* android_log_persist_write = nullptr;
 #endif
 
-#if defined(__ANDROID__)
+static int __write_to_log_init(log_id_t, struct iovec* vec, size_t nr);
+static int (*write_to_log)(log_id_t, struct iovec* vec, size_t nr) = __write_to_log_init;
+
 static int check_log_uid_permissions() {
+#if defined(__ANDROID__)
   uid_t uid = __android_log_uid();
 
   /* Matches clientHasLogCredentials() in logd */
@@ -84,14 +87,43 @@ static int check_log_uid_permissions() {
       }
     }
   }
+#endif
   return 0;
 }
-#endif
+
+static void __android_log_cache_available(struct android_log_transport_write* node) {
+  uint32_t i;
+
+  if (node->logMask) {
+    return;
+  }
+
+  for (i = LOG_ID_MIN; i < LOG_ID_MAX; ++i) {
+    if (i != LOG_ID_KERNEL && (i != LOG_ID_SECURITY || check_log_uid_permissions() == 0) &&
+        (*node->available)(static_cast<log_id_t>(i)) >= 0) {
+      node->logMask |= 1 << i;
+    }
+  }
+}
 
 /*
  * Release any logger resources. A new log write will immediately re-acquire.
  */
 void __android_log_close() {
+  __android_log_lock();
+
+  write_to_log = __write_to_log_init;
+
+  /*
+   * Threads that are actively writing at this point are not held back
+   * by a lock and are at risk of dropping the messages with a return code
+   * -EBADF. Prefer to return error code than add the overhead of a lock to
+   * each log writing call to guarantee delivery. In addition, anyone
+   * calling this is doing so to release the logging resources and shut down,
+   * for them to do so with outstanding log requests in other threads is a
+   * disengenuous use of this function.
+   */
+
   if (android_log_write != nullptr) {
     android_log_write->close();
   }
@@ -100,18 +132,44 @@ void __android_log_close() {
     android_log_persist_write->close();
   }
 
+  __android_log_unlock();
 }
 
-static int write_to_log(log_id_t log_id, struct iovec* vec, size_t nr) {
+static bool transport_initialize(android_log_transport_write* transport) {
+  if (transport == nullptr) {
+    return false;
+  }
+
+  __android_log_cache_available(transport);
+  if (!transport->logMask) {
+    return false;
+  }
+
+  // TODO: Do we actually need to call close() if open() fails?
+  if (transport->open() < 0) {
+    transport->close();
+    return false;
+  }
+
+  return true;
+}
+
+/* log_init_lock assumed */
+static int __write_to_log_initialize() {
+  if (!transport_initialize(android_log_write)) {
+    return -ENODEV;
+  }
+
+  transport_initialize(android_log_persist_write);
+
+  return 1;
+}
+
+static int __write_to_log_daemon(log_id_t log_id, struct iovec* vec, size_t nr) {
   int ret, save_errno;
   struct timespec ts;
 
   save_errno = errno;
-
-  if (log_id == LOG_ID_KERNEL) {
-    return -EINVAL;
-  }
-
 #if defined(__ANDROID__)
   clock_gettime(android_log_clockid(), &ts);
 
@@ -157,8 +215,9 @@ static int write_to_log(log_id_t log_id, struct iovec* vec, size_t nr) {
 #endif
 
   ret = 0;
+  size_t i = 1 << log_id;
 
-  if (android_log_write != nullptr) {
+  if (android_log_write != nullptr && (android_log_write->logMask & i)) {
     ssize_t retval;
     retval = android_log_write->write(log_id, &ts, vec, nr);
     if (ret >= 0) {
@@ -166,10 +225,33 @@ static int write_to_log(log_id_t log_id, struct iovec* vec, size_t nr) {
     }
   }
 
-  if (android_log_persist_write != nullptr) {
+  if (android_log_persist_write != nullptr && (android_log_persist_write->logMask & i)) {
     android_log_persist_write->write(log_id, &ts, vec, nr);
   }
 
+  errno = save_errno;
+  return ret;
+}
+
+static int __write_to_log_init(log_id_t log_id, struct iovec* vec, size_t nr) {
+  int ret, save_errno = errno;
+
+  __android_log_lock();
+
+  if (write_to_log == __write_to_log_init) {
+    ret = __write_to_log_initialize();
+    if (ret < 0) {
+      __android_log_unlock();
+      errno = save_errno;
+      return ret;
+    }
+
+    write_to_log = __write_to_log_daemon;
+  }
+
+  __android_log_unlock();
+
+  ret = write_to_log(log_id, vec, nr);
   errno = save_errno;
   return ret;
 }
