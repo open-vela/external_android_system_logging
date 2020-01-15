@@ -16,16 +16,18 @@
 
 #pragma once
 
+#include <sys/cdefs.h>
 #include <unistd.h>
 
-#include "log/log_read.h"
-#include "log_portability.h"
+/* possible missing definitions in sys/cdefs.h */
 
-__BEGIN_DECLS
-
-int LogdRead(struct logger_list* logger_list, struct log_msg* log_msg);
-void LogdClose(struct logger_list* logger_list);
-
-ssize_t SendLogdControlMessage(char* buf, size_t buf_size);
-
-__END_DECLS
+/* DECLS */
+#ifndef __BEGIN_DECLS
+#if defined(__cplusplus)
+#define __BEGIN_DECLS extern "C" {
+#define __END_DECLS }
+#else
+#define __BEGIN_DECLS
+#define __END_DECLS
+#endif
+#endif

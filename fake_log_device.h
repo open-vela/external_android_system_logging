@@ -16,10 +16,11 @@
 
 #pragma once
 
-#include <sys/cdefs.h>
 #include <sys/types.h>
 
 #include <android/log.h>
+
+#include "log_portability.h"
 
 __BEGIN_DECLS
 
