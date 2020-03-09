@@ -27,7 +27,6 @@
 #include <android/set_abort_message.h>
 #endif
 
-#include <atomic>
 #include <shared_mutex>
 
 #include <android-base/errno_restorer.h>
@@ -149,9 +148,11 @@ void __android_log_set_default_tag(const char* tag) {
   GetDefaultTag().assign(tag, 0, LOGGER_ENTRY_MAX_PAYLOAD);
 }
 
-static std::atomic_int minimum_log_priority = ANDROID_LOG_DEFAULT;
+static int minimum_log_priority = ANDROID_LOG_DEFAULT;
 int __android_log_set_minimum_priority(int priority) {
-  return minimum_log_priority.exchange(priority, std::memory_order_relaxed);
+  int old_minimum_log_priority = minimum_log_priority;
+  minimum_log_priority = priority;
+  return old_minimum_log_priority;
 }
 
 int __android_log_get_minimum_priority() {
@@ -347,7 +348,7 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
     return 0;
   }
 
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 
@@ -365,7 +366,7 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
   }
 
   va_list ap;
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -385,7 +386,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   }
 
   va_list ap;
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -397,7 +398,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
 }
 
 void __android_log_assert(const char* cond, const char* tag, const char* fmt, ...) {
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   if (fmt) {
     va_list ap;
