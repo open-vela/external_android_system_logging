@@ -161,7 +161,7 @@ typedef enum log_id {
  * Let the logging function choose the best log target.
  * This is not part of the enum since adding either -1 or 0xFFFFFFFF forces the enum to be signed or
  * unsigned, which breaks unfortunately common arithmetic against LOG_ID_MIN and LOG_ID_MAX. */
-#define LOG_ID_DEFAULT -1
+#define LOG_ID_DEFAULT (-1)
 
 /**
  * Writes the constant string `text` to the log buffer `id`,
@@ -206,7 +206,7 @@ typedef void (*__android_logger_function)(const struct __android_logger_data* lo
  */
 typedef void (*__android_aborter_function)(const char* abort_message);
 
-#if __ANDROID_API__ >= 30 || !defined(__ANDROID__)
+#if !defined(__ANDROID__) || __ANDROID_API__ >= 30
 /**
  * Writes the log message specified with logger_data and msg to the log.  logger_data includes
  * additional file name and line number information that a logger may use.  logger_data is versioned
