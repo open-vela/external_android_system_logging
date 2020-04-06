@@ -346,7 +346,7 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
     return 0;
   }
 
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 
@@ -364,7 +364,7 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
   }
 
   va_list ap;
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -384,7 +384,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   }
 
   va_list ap;
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -397,7 +397,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
 }
 
 void __android_log_assert(const char* cond, const char* tag, const char* fmt, ...) {
-  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
+  char buf[LOG_BUF_SIZE];
 
   if (fmt) {
     va_list ap;
