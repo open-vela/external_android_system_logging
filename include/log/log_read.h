@@ -79,32 +79,9 @@ struct log_msg {
     struct logger_entry entry;
   } __attribute__((aligned(4)));
 #ifdef __cplusplus
-  /* Matching log_time operators */
-  bool operator==(const log_msg& T) const {
-    return (entry.sec == T.entry.sec) && (entry.nsec == T.entry.nsec);
-  }
-  bool operator!=(const log_msg& T) const {
-    return !(*this == T);
-  }
-  bool operator<(const log_msg& T) const {
-    return (entry.sec < T.entry.sec) ||
-           ((entry.sec == T.entry.sec) && (entry.nsec < T.entry.nsec));
-  }
-  bool operator>=(const log_msg& T) const {
-    return !(*this < T);
-  }
-  bool operator>(const log_msg& T) const {
-    return (entry.sec > T.entry.sec) ||
-           ((entry.sec == T.entry.sec) && (entry.nsec > T.entry.nsec));
-  }
-  bool operator<=(const log_msg& T) const {
-    return !(*this > T);
-  }
   uint64_t nsec() const {
     return static_cast<uint64_t>(entry.sec) * NS_PER_SEC + entry.nsec;
   }
-
-  /* packet methods */
   log_id_t id() {
     return static_cast<log_id_t>(entry.lid);
   }
@@ -137,10 +114,6 @@ ssize_t android_logger_get_prune_list(struct logger_list* logger_list,
                                       char* buf, size_t len);
 int android_logger_set_prune_list(struct logger_list* logger_list, const char* buf, size_t len);
 
-#define ANDROID_LOG_RDONLY O_RDONLY
-#define ANDROID_LOG_WRONLY O_WRONLY
-#define ANDROID_LOG_RDWR O_RDWR
-#define ANDROID_LOG_ACCMODE O_ACCMODE
 #ifndef O_NONBLOCK
 #define ANDROID_LOG_NONBLOCK 0x00000800
 #else
