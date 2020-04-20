@@ -330,7 +330,7 @@ int __android_log_buf_write(int bufID, int prio, const char* tag, const char* ms
   ErrnoRestorer errno_restorer;
 
   if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
-    return 0;
+    return -EPERM;
   }
 
   __android_log_message log_message = {
@@ -343,10 +343,10 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
   ErrnoRestorer errno_restorer;
 
   if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
-    return 0;
+    return -EPERM;
   }
 
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 
@@ -360,11 +360,11 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
   ErrnoRestorer errno_restorer;
 
   if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
-    return 0;
+    return -EPERM;
   }
 
   va_list ap;
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -380,11 +380,11 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   ErrnoRestorer errno_restorer;
 
   if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
-    return 0;
+    return -EPERM;
   }
 
   va_list ap;
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -397,7 +397,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
 }
 
 void __android_log_assert(const char* cond, const char* tag, const char* fmt, ...) {
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   if (fmt) {
     va_list ap;
