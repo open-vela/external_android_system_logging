@@ -87,6 +87,8 @@ int __android_log_stats_bwrite(int32_t tag, const void* payload, size_t len);
 /*
  * Event log entry types.
  */
+#ifndef __AndroidEventLogType_defined
+#define __AndroidEventLogType_defined
 typedef enum {
   /* Special markers for android_log_list_element type */
   EVENT_TYPE_LIST_STOP = '\n', /* declare end of list  */
@@ -99,6 +101,9 @@ typedef enum {
   EVENT_TYPE_LIST = 3,
   EVENT_TYPE_FLOAT = 4,
 } AndroidEventLogType;
+#endif
+#define sizeof_AndroidEventLogType sizeof(typeof_AndroidEventLogType)
+#define typeof_AndroidEventLogType unsigned char
 
 #ifndef LOG_EVENT_INT
 #define LOG_EVENT_INT(_tag, _value)                                          \
