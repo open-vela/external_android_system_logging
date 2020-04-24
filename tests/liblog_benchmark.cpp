@@ -27,11 +27,9 @@
 #include <unordered_set>
 
 #include <android-base/file.h>
-#include <android-base/properties.h>
 #include <benchmark/benchmark.h>
 #include <cutils/sockets.h>
 #include <log/event_tag_map.h>
-#include <log/log_read.h>
 #include <private/android_logger.h>
 
 BENCHMARK_MAIN();
@@ -649,7 +647,8 @@ static const int alarm_time = 3;
 static void BM_log_latency(benchmark::State& state) {
   pid_t pid = getpid();
 
-  struct logger_list* logger_list = android_logger_list_open(LOG_ID_EVENTS, 0, 0, pid);
+  struct logger_list* logger_list =
+      android_logger_list_open(LOG_ID_EVENTS, ANDROID_LOG_RDONLY, 0, pid);
 
   if (!logger_list) {
     fprintf(stderr, "Unable to open events log: %s\n", strerror(errno));
@@ -723,7 +722,8 @@ static void caught_delay(int /*signum*/) {
 static void BM_log_delay(benchmark::State& state) {
   pid_t pid = getpid();
 
-  struct logger_list* logger_list = android_logger_list_open(LOG_ID_EVENTS, 0, 0, pid);
+  struct logger_list* logger_list =
+      android_logger_list_open(LOG_ID_EVENTS, ANDROID_LOG_RDONLY, 0, pid);
 
   if (!logger_list) {
     fprintf(stderr, "Unable to open events log: %s\n", strerror(errno));
@@ -1025,14 +1025,3 @@ static void BM_lookupEventTagNum_logd_existing(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_lookupEventTagNum_logd_existing);
-
-static void BM_log_verbose_overhead(benchmark::State& state) {
-  std::string test_log_tag = "liblog_verbose_tag";
-  android::base::SetProperty("log.tag." + test_log_tag, "I");
-  for (auto _ : state) {
-    __android_log_print(ANDROID_LOG_VERBOSE, test_log_tag.c_str(), "%s test log message %d %d",
-                        "test test", 123, 456);
-  }
-  android::base::SetProperty("log.tag." + test_log_tag, "");
-}
-BENCHMARK(BM_log_verbose_overhead);
