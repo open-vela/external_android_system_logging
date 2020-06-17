@@ -188,7 +188,7 @@ ssize_t __android_log_pmsg_file_write(log_id_t logId, char prio, const char* fil
     return -EINVAL;
   }
 
-  clock_gettime(CLOCK_REALTIME, &ts);
+  clock_gettime(android_log_clockid(), &ts);
 
   cp = strdup(filename);
   if (!cp) {
