@@ -96,7 +96,7 @@ int PmsgRead(struct logger_list* logger_list, struct log_msg* log_msg) {
           ((logger_list->start.tv_sec != buf.l.realtime.tv_sec) ||
            (logger_list->start.tv_nsec <= buf.l.realtime.tv_nsec)))) &&
         (!logger_list->pid || (logger_list->pid == buf.p.pid))) {
-      char* msg = reinterpret_cast<char*>(&log_msg->entry) + sizeof(log_msg->entry);
+      char* msg = reinterpret_cast<char*>(&log_msg->entry) + log_msg->entry.hdr_size;
       *msg = buf.prio;
       fd = atomic_load(&logger_list->fd);
       if (fd <= 0) {
@@ -185,7 +185,7 @@ ssize_t __android_log_pmsg_file_read(log_id_t logId, char prio, const char* pref
   /* Add just enough clues in logger_list and transp to make API function */
   memset(&logger_list, 0, sizeof(logger_list));
 
-  logger_list.mode = ANDROID_LOG_PSTORE | ANDROID_LOG_NONBLOCK | ANDROID_LOG_RDONLY;
+  logger_list.mode = ANDROID_LOG_PSTORE | ANDROID_LOG_NONBLOCK;
   logger_list.log_mask = (unsigned)-1;
   if (logId != LOG_ID_ANY) {
     logger_list.log_mask = (1 << logId);
