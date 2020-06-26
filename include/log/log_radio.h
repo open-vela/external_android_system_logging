@@ -17,6 +17,7 @@
 #pragma once
 
 #include <android/log.h>
+#include <log/log_id.h>
 
 /*
  * Normally we strip the effects of ALOGV (VERBOSE messages),
