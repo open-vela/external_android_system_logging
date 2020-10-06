@@ -98,6 +98,7 @@ cc_test {
     test_suites: [
         "cts",
         "device-tests",
+        "vts10",
     ],
 }
 
