@@ -38,82 +38,51 @@
 #include "logger.h"
 #include "uio.h"
 
-class LogdSocket {
- public:
-  static LogdSocket& BlockingSocket() {
-    static LogdSocket logd_socket(true);
-    return logd_socket;
-  }
-  static LogdSocket& NonBlockingSocket() {
-    static LogdSocket logd_socket(false);
-    return logd_socket;
-  }
+static atomic_int logd_socket;
 
-  void Reconnect() { LogdConnect(sock_); }
+// Note that it is safe to call connect() multiple times on DGRAM Unix domain sockets, so this
+// function is used to reconnect to logd without requiring a new socket.
+static void LogdConnect() {
+  sockaddr_un un = {};
+  un.sun_family = AF_UNIX;
+  strcpy(un.sun_path, "/dev/socket/logdw");
+  TEMP_FAILURE_RETRY(connect(logd_socket, reinterpret_cast<sockaddr*>(&un), sizeof(sockaddr_un)));
+}
 
-  // Zygote uses this to clean up open FD's after fork() and before specialization.  It is single
-  // threaded at this point and therefore this function is explicitly not thread safe.  It sets
-  // sock_ to kUninitialized, so future logs will be safely initialized whenever they happen.
-  void Close() {
-    if (sock_ != kUninitialized) {
-      close(sock_);
-    }
-    sock_ = kUninitialized;
+// logd_socket should only be opened once.  If we see that logd_socket is uninitialized, we create a
+// new socket and attempt to exchange it into the atomic logd_socket.  If the compare/exchange was
+// successful, then that will be the socket used for the duration of the program, otherwise a
+// different thread has already opened and written the socket to the atomic, so close the new socket
+// and return.
+static void GetSocket() {
+  if (logd_socket != 0) {
+    return;
   }
 
-  int sock() {
-    GetSocket();
-    return sock_;
+  int new_socket =
+      TEMP_FAILURE_RETRY(socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+  if (new_socket <= 0) {
+    return;
   }
 
- private:
-  LogdSocket(bool blocking) : blocking_(blocking) {}
-
-  // Note that it is safe to call connect() multiple times on DGRAM Unix domain sockets, so this
-  // function is used to reconnect to logd without requiring a new socket.
-  static void LogdConnect(int sock) {
-    sockaddr_un un = {};
-    un.sun_family = AF_UNIX;
-    strcpy(un.sun_path, "/dev/socket/logdw");
-    TEMP_FAILURE_RETRY(connect(sock, reinterpret_cast<sockaddr*>(&un), sizeof(sockaddr_un)));
+  int uninitialized_value = 0;
+  if (!logd_socket.compare_exchange_strong(uninitialized_value, new_socket)) {
+    close(new_socket);
+    return;
   }
 
-  // sock_ should only be opened once.  If we see that sock_ is uninitialized, we
-  // create a new socket and attempt to exchange it into the atomic sock_.  If the
-  // compare/exchange was successful, then that will be the socket used for the duration of the
-  // program, otherwise a different thread has already opened and written the socket to the atomic,
-  // so close the new socket and return.
-  void GetSocket() {
-    if (sock_ != kUninitialized) {
-      return;
-    }
+  LogdConnect();
+}
 
-    int flags = SOCK_DGRAM | SOCK_CLOEXEC;
-    if (!blocking_) {
-      flags |= SOCK_NONBLOCK;
-    }
-    int new_socket = TEMP_FAILURE_RETRY(socket(PF_UNIX, flags, 0));
-    if (new_socket < 0) {
-      return;
-    }
-
-    LogdConnect(new_socket);
-
-    int uninitialized_value = kUninitialized;
-    if (!sock_.compare_exchange_strong(uninitialized_value, new_socket)) {
-      close(new_socket);
-      return;
-    }
-  }
-
-  static const int kUninitialized = -1;
-  atomic_int sock_ = kUninitialized;
-  bool blocking_;
-};
-
+// This is the one exception to the above.  Zygote uses this to clean up open FD's after fork() and
+// before specialization.  It is single threaded at this point and therefore this function is
+// explicitly not thread safe.  It sets logd_socket to 0, so future logs will be safely initialized
+// whenever they happen.
 void LogdClose() {
-  LogdSocket::BlockingSocket().Close();
-  LogdSocket::NonBlockingSocket().Close();
+  if (logd_socket > 0) {
+    close(logd_socket);
+  }
+  logd_socket = 0;
 }
 
 int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr) {
@@ -123,11 +92,11 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   android_log_header_t header;
   size_t i, payloadSize;
   static atomic_int dropped;
+  static atomic_int droppedSecurity;
 
-  LogdSocket& logd_socket =
-      logId == LOG_ID_SECURITY ? LogdSocket::BlockingSocket() : LogdSocket::NonBlockingSocket();
+  GetSocket();
 
-  if (logd_socket.sock() < 0) {
+  if (logd_socket <= 0) {
     return -EBADF;
   }
 
@@ -148,7 +117,24 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   newVec[0].iov_base = (unsigned char*)&header;
   newVec[0].iov_len = sizeof(header);
 
-  int32_t snapshot = atomic_exchange_explicit(&dropped, 0, memory_order_relaxed);
+  int32_t snapshot = atomic_exchange_explicit(&droppedSecurity, 0, memory_order_relaxed);
+  if (snapshot) {
+    android_log_event_int_t buffer;
+
+    header.id = LOG_ID_SECURITY;
+    buffer.header.tag = LIBLOG_LOG_TAG;
+    buffer.payload.type = EVENT_TYPE_INT;
+    buffer.payload.data = snapshot;
+
+    newVec[headerLength].iov_base = &buffer;
+    newVec[headerLength].iov_len = sizeof(buffer);
+
+    ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, 2));
+    if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
+      atomic_fetch_add_explicit(&droppedSecurity, snapshot, memory_order_relaxed);
+    }
+  }
+  snapshot = atomic_exchange_explicit(&dropped, 0, memory_order_relaxed);
   if (snapshot && __android_log_is_loggable_len(ANDROID_LOG_INFO, "liblog", strlen("liblog"),
                                                 ANDROID_LOG_VERBOSE)) {
     android_log_event_int_t buffer;
@@ -161,7 +147,7 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     newVec[headerLength].iov_base = &buffer;
     newVec[headerLength].iov_len = sizeof(buffer);
 
-    ret = TEMP_FAILURE_RETRY(writev(logd_socket.sock(), newVec, 2));
+    ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, 2));
     if (ret != (ssize_t)(sizeof(header) + sizeof(buffer))) {
       atomic_fetch_add_explicit(&dropped, snapshot, memory_order_relaxed);
     }
@@ -182,13 +168,14 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     }
   }
 
+  // The write below could be lost, but will never block.
   // EAGAIN occurs if logd is overloaded, other errors indicate that something went wrong with
   // the connection, so we reset it and try again.
-  ret = TEMP_FAILURE_RETRY(writev(logd_socket.sock(), newVec, i));
+  ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, i));
   if (ret < 0 && errno != EAGAIN) {
-    logd_socket.Reconnect();
+    LogdConnect();
 
-    ret = TEMP_FAILURE_RETRY(writev(logd_socket.sock(), newVec, i));
+    ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, i));
   }
 
   if (ret < 0) {
@@ -199,6 +186,9 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     ret -= sizeof(header);
   } else if (ret < 0) {
     atomic_fetch_add_explicit(&dropped, 1, memory_order_relaxed);
+    if (logId == LOG_ID_SECURITY) {
+      atomic_fetch_add_explicit(&droppedSecurity, 1, memory_order_relaxed);
+    }
   }
 
   return ret;
