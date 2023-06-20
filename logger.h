@@ -16,12 +16,7 @@
 
 #pragma once
 
-#ifdef __cplusplus
-#include <atomic>
-using namespace std;
-#else
 #include <stdatomic.h>
-#endif
 #include <sys/cdefs.h>
 
 #include <log/log.h>
