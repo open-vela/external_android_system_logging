@@ -21,12 +21,7 @@
 #include <inttypes.h>
 #include <poll.h>
 #include <stdarg.h>
-#ifdef __cplusplus
-#include <atomic>
-using namespace std;
-#else
 #include <stdatomic.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
